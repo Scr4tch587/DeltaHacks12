@@ -16,6 +16,7 @@ services:
       - VULTR_ACCESS_KEY=${VULTR_ACCESS_KEY:-}
       - VULTR_SECRET_KEY=${VULTR_SECRET_KEY:-}
       - VULTR_BUCKET=${VULTR_BUCKET:-}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-}
     restart: unless-stopped
 
   headless:
@@ -52,6 +53,9 @@ services:
       - VULTR_ACCESS_KEY=${VULTR_ACCESS_KEY:-}
       - VULTR_SECRET_KEY=${VULTR_SECRET_KEY:-}
       - VULTR_BUCKET=${VULTR_BUCKET:-}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-}
+      - PRESIGNED_URL_EXPIRY=${PRESIGNED_URL_EXPIRY:-3600}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-524288000}
     restart: unless-stopped
 
   # Optional Tailscale service - uncomment and set TS_AUTHKEY to use

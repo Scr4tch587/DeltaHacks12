@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 motor
 pymongo
+boto3
+python-multipart

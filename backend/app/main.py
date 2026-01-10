@@ -143,36 +143,102 @@ async def health():
 
 @app.get("/health/db")
 async def health_db():
-    """Dedicated MongoDB connection test endpoint"""
-    if not MONGODB_URI:
-        raise HTTPException(status_code=500, detail="MONGODB_URI not configured")
+    """Dedicated MongoDB connection test endpoint - tests handshake (ping)"""
+    global client, db
     
+    if not MONGODB_URI:
+        raise HTTPException(
+            status_code=500, 
+            detail="MONGODB_URI not configured. Set the MONGODB_URI environment variable."
+        )
+    
+    # Try to initialize connection if it wasn't set during startup
     if not client:
-        raise HTTPException(status_code=503, detail="MongoDB client not initialized")
+        try:
+            client = AsyncIOMotorClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+            db = client[MONGODB_DB]
+            print("✓ MongoDB client initialized on-demand (was not set during startup)")
+        except Exception as e:
+            raise HTTPException(
+                status_code=503, 
+                detail=f"MongoDB client initialization failed: {str(e)}. Check connection string and network."
+            )
     
     try:
-        # Ping the database
+        # Ping the database (handshake test) - this is the core connection test
         result = await client.admin.command('ping')
-        # Get database info
-        db_info = await db.command('dbStats')
         
-        return {
+        response = {
             "status": "connected",
             "mongodb_uri_set": bool(MONGODB_URI),
             "database": MONGODB_DB,
             "ping": result,
-            "database_stats": {
-                "name": db_info.get("db", MONGODB_DB),
-                "collections": db_info.get("collections", 0),
-                "data_size": db_info.get("dataSize", 0)
-            }
+            "handshake": "success"
         }
+        
+        # Try to get database info (optional - might fail due to permissions)
+        if db is not None:
+            try:
+                db_info = await db.command('dbStats')
+                response["database_stats"] = {
+                    "name": db_info.get("db", MONGODB_DB),
+                    "collections": db_info.get("collections", 0),
+                    "data_size": db_info.get("dataSize", 0)
+                }
+            except Exception as db_stats_error:
+                # dbStats failed but ping succeeded - connection is still healthy
+                response["database_stats"] = {
+                    "note": f"dbStats unavailable: {str(db_stats_error)} (connection is still healthy)"
+                }
+        else:
+            response["note"] = f"Database object not initialized (database: {MONGODB_DB})"
+        
+        return response
+        
     except ConnectionFailure as e:
-        raise HTTPException(status_code=503, detail=f"MongoDB connection failed: {str(e)}")
+        raise HTTPException(
+            status_code=503, 
+            detail=f"MongoDB connection failed: {str(e)}. Check your connection string and network."
+        )
     except ServerSelectionTimeoutError as e:
-        raise HTTPException(status_code=503, detail=f"MongoDB server selection timeout: {str(e)}")
+        raise HTTPException(
+            status_code=503, 
+            detail=f"MongoDB server selection timeout: {str(e)}. Possible causes: network issue, firewall blocking, or IP not whitelisted in MongoDB Atlas."
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"MongoDB error: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"MongoDB error ({type(e).__name__}): {str(e)}"
+        )
+
+
+@app.get("/health/db/ping")
+async def health_db_ping():
+    """Minimal MongoDB handshake test - just ping, no additional info"""
+    global client, db
+    
+    if not MONGODB_URI:
+        raise HTTPException(status_code=500, detail="MONGODB_URI not configured")
+    
+    # Try to initialize connection if it wasn't set during startup
+    if not client:
+        try:
+            client = AsyncIOMotorClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+            db = client[MONGODB_DB]
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"MongoDB client initialization failed: {str(e)}")
+    
+    try:
+        result = await client.admin.command('ping')
+        return {
+            "status": "ok",
+            "handshake": "success",
+            "ping": result
+        }
+    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+        raise HTTPException(status_code=503, detail=f"MongoDB handshake failed: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 @app.get("/health/storage")
