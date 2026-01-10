@@ -1,98 +1,214 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { useEffect, useRef, useState } from "react";
+import {
+  Dimensions,
+  FlatList,
+  ListRenderItemInfo,
+  Platform,
+  TextStyle,
+  View,
+  ViewStyle,
+  Text,
+  Pressable,
+  StyleSheet,
+  ImageStyle,
+  Share,
+} from "react-native";
+
+import { videos, videos2, videos3 } from "../../assets/data";
+import { Video, ResizeMode, AVPlaybackNativeSource } from "expo-av";
+// import Video, { ResizeMode, VideoRef } from "react-native-video";
+import { Image } from "expo-image";
+
+const { height, width } = Dimensions.get("window");
+
+interface VideoWrapper {
+  data: ListRenderItemInfo<string>;
+  allVideos: string[];
+  visibleIndex: number;
+  pause: () => void;
+  share: (videoURL: string) => void;
+  pauseOverride: boolean;
+}
+
+const VideoWrapper = ({
+  data,
+  allVideos,
+  visibleIndex,
+  pause,
+  pauseOverride,
+  share,
+}: VideoWrapper) => {
+  const bottomHeight = useBottomTabBarHeight();
+  const { index, item } = data;
+
+  // const videoRef = useRef<VideoRef>(null);
+
+  // useEffect(() => {
+  //   videoRef.current?.seek(0);
+  // }, [visibleIndex]);
+
+  const videoRef = useRef<Video | null>(null);
+
+  useEffect(() => {
+    if (visibleIndex === index) {
+      videoRef.current?.setPositionAsync(0);
+    }
+  }, [visibleIndex, index]);
+  
+  
+
+  return (
+    <View
+      style={{
+        height: Platform.OS === "android" ? height - bottomHeight : height,
+        width,
+      }}
+    >
+      {/* <Video
+        ref={videoRef}
+        source={{ uri: allVideos[index] }}
+        style={{ height: height - bottomHeight, width }}
+        resizeMode="cover"
+        paused={visibleIndex !== index || pauseOverride}
+      /> */}
+
+      <Video
+        ref={videoRef}
+        source={{ uri: allVideos[index] }}
+        style={{ height: height - bottomHeight, width }}
+        resizeMode={ResizeMode.COVER}
+        shouldPlay={visibleIndex === index && !pauseOverride}
+        isLooping
+      />
+
+
+      <Pressable onPress={pause} style={$overlay} />
+
+      <Pressable onPress={() => share(item)} style={$shareButtonContainer}>
+        <Image source="share" style={$shareButtonImage} />
+        <Text style={$shareButtonText}>Share</Text>
+      </Pressable>
+    </View>
+  );
+};
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const bottomHeight = useBottomTabBarHeight();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const [allVideos, setAllVideos] = useState(videos);
+  const [visibleIndex, setVisibleIndex] = useState(0);
+  const [pauseOverride, setPauseOverride] = useState(false);
+
+  const numOfRefreshes = useRef(0);
+
+  const fetchMoreData = () => {
+    if (numOfRefreshes.current === 0) {
+      setAllVideos([...allVideos, ...videos2]);
+    }
+    if (numOfRefreshes.current === 1) {
+      setAllVideos([...allVideos, ...videos3]);
+    }
+
+    numOfRefreshes.current += 1;
+  };
+
+  const onViewableItemsChanged = (event: any) => {
+    const newIndex = Number(event.viewableItems.at(-1).key);
+    setVisibleIndex(newIndex);
+  };
+
+  const pause = () => {
+    setPauseOverride(!pauseOverride);
+  };
+
+  const share = (videoURL: string) => {
+    setPauseOverride(true);
+    setTimeout(() => {
+      Share.share({
+        title: "Share This Video",
+        message: `Check out: ${videoURL}`,
+      });
+    }, 100);
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: "black" }}>
+      <FlatList
+        pagingEnabled
+        snapToInterval={
+          Platform.OS === "android" ? height - bottomHeight : undefined
+        }
+        initialNumToRender={1}
+        showsVerticalScrollIndicator={false}
+        onViewableItemsChanged={onViewableItemsChanged}
+        data={allVideos}
+        onEndReachedThreshold={0.3}
+        onEndReached={fetchMoreData}
+        renderItem={(data) => {
+          return (
+            <VideoWrapper
+              data={data}
+              allVideos={allVideos}
+              visibleIndex={visibleIndex}
+              pause={pause}
+              share={share}
+              pauseOverride={pauseOverride}
+            />
+          );
+        }}
+      />
+      {pauseOverride && (
+        <Pressable style={$pauseIndicator}>
+          <Image source="pause" style={$playButtonImage} />
+        </Pressable>
+      )}
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
+const $overlay: ViewStyle = {
+  ...StyleSheet.absoluteFillObject,
+  backgroundColor: "black",
+  opacity: 0.3,
+};
+
+const $pauseIndicator: ViewStyle = {
+  position: "absolute",
+  alignSelf: "center",
+  top: height / 2 - 25,
+};
+
+const $playButtonImage: ImageStyle = {
+  height: 50,
+  width: 50,
+  justifyContent: "center",
+  alignItems: "center",
+  resizeMode: "contain",
+};
+
+const $shareButtonContainer: ViewStyle = {
+  position: "absolute",
+  zIndex: 999,
+  elevation: 999,
+  bottom: Platform.OS === "android" ? 70 : 100,
+  right: 10,
+  alignItems: "center",
+  gap: 8,
+};
+
+const $shareButtonImage: ImageStyle = {
+  height: 25,
+  width: 25,
+  justifyContent: "center",
+  alignItems: "center",
+  resizeMode: "contain",
+  tintColor: "white",
+};
+
+const $shareButtonText: TextStyle = {
+  color: "white",
+  fontSize: 12,
+  fontWeight: "bold",
+};
