@@ -12,6 +12,10 @@ services:
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - MONGODB_DB=${MONGODB_DB}
+      - VULTR_ENDPOINT=${VULTR_ENDPOINT:-}
+      - VULTR_ACCESS_KEY=${VULTR_ACCESS_KEY:-}
+      - VULTR_SECRET_KEY=${VULTR_SECRET_KEY:-}
+      - VULTR_BUCKET=${VULTR_BUCKET:-}
     restart: unless-stopped
 
   headless:
@@ -26,6 +30,10 @@ services:
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - MONGODB_DB=${MONGODB_DB}
+      - VULTR_ENDPOINT=${VULTR_ENDPOINT:-}
+      - VULTR_ACCESS_KEY=${VULTR_ACCESS_KEY:-}
+      - VULTR_SECRET_KEY=${VULTR_SECRET_KEY:-}
+      - VULTR_BUCKET=${VULTR_BUCKET:-}
     restart: unless-stopped
 
   video:
@@ -40,6 +48,10 @@ services:
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - MONGODB_DB=${MONGODB_DB}
+      - VULTR_ENDPOINT=${VULTR_ENDPOINT:-}
+      - VULTR_ACCESS_KEY=${VULTR_ACCESS_KEY:-}
+      - VULTR_SECRET_KEY=${VULTR_SECRET_KEY:-}
+      - VULTR_BUCKET=${VULTR_BUCKET:-}
     restart: unless-stopped
 
   # Optional Tailscale service - uncomment and set TS_AUTHKEY to use
