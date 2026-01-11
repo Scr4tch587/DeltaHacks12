@@ -47,27 +47,27 @@ async def main():
     
     test_user = {
         "email": user_email,
-        "first_name": "Automated",
-        "last_name": "Tester",
-        "phone": "555-010-9988",
-        "location": "New York, NY, USA",
-        "linkedin_url": "https://linkedin.com/in/dummy-candidate",
-        "website_url": "https://dummy-portfolio.com",
-        "github_url": "https://github.com/dummy-candidate",
+        "first_name": "Charlieeee",
+        "last_name": "Kirkeee",
+        "phone": "647-555-0123",
+        "location": "Toronto, ON, Canada",
+        "linkedin_url": "https://linkedin.com/in/charliekirrrk",
+        "website_url": "https://kirkinator.dev",
+        "github_url": "https://github.com/charlseeee",
         "resume_path": final_path,
         "education": [
             {
                 "degree": "Bachelor of Science in Computer Science",
-                "school": "University of Technology",
-                "year": "2020"
+                "school": "University of Waterloo",
+                "year": "2023"
             }
         ],
         "experience": [
             {
-                "company": "TechCorp",
-                "role": "Senior Software Engineer",
-                "duration": "2020 - Present",
-                "description": "Developed scalable backend services using Python and FastAPI. Managed AWS infrastructure."
+                "company": "Shopify",
+                "role": "Software Developer Intern",
+                "duration": "May 2022 - Aug 2022",
+                "description": "Built internal tools and APIs using Ruby on Rails and React. Improved checkout performance by 15%."
             }
         ],
         "skills": [
