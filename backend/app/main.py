@@ -1007,7 +1007,7 @@ async def search_jobs(request: SearchJobsRequest):
             async for doc in jobs_collection.aggregate(pipeline):
                 if doc.get("greenhouse_id"):
                     job_results.append({
-                        "greenhouse_id": str(doc["greenhouse_id"]),
+                        "greenhouse_id": doc["greenhouse_id"],  # Keep original type
                         "score": doc.get("score", 0),
                         "description": doc.get("description", "")
                     })
@@ -1029,7 +1029,7 @@ async def search_jobs(request: SearchJobsRequest):
             async for doc in cursor:
                 if doc.get("greenhouse_id"):
                     job_results.append({
-                        "greenhouse_id": str(doc["greenhouse_id"]),
+                        "greenhouse_id": doc["greenhouse_id"],  # Keep original type
                         "score": 0.5,  # Default score for fallback
                         "description": doc.get("description", "")
                     })
