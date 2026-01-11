@@ -88,6 +88,7 @@ services:
             - FISH_AUDIO_API_KEY=${FISH_AUDIO_API_KEY}
         volumes:
             - text-to-video-cache:/app/cache
+            - generator-output:/tmp/generator_output
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
             interval: 30s
@@ -113,9 +114,12 @@ services:
             - DO_SPACES_CDN_URL=${DO_SPACES_CDN_URL:-https://deltahacks-videos.tor1.cdn.digitaloceanspaces.com}
             - WORKER_ID=generator-local
             - POLL_INTERVAL_S=5
+        volumes:
+            - generator-output:/tmp/generator_output
         depends_on:
             text-to-video:
                 condition: service_healthy
 
 volumes:
     text-to-video-cache:
+    generator-output:

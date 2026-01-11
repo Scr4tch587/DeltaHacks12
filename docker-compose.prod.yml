@@ -75,6 +75,7 @@ services:
       - FISH_AUDIO_API_KEY=${FISH_AUDIO_API_KEY:-}
     volumes:
       - text-to-video-cache:/app/cache
+      - generator-output:/tmp/generator_output
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -102,6 +103,8 @@ services:
       - WORKER_ID=generator-1
       - POLL_INTERVAL_S=5
       - MAX_RETRIES=3
+    volumes:
+      - generator-output:/tmp/generator_output
     depends_on:
       text-to-video:
         condition: service_healthy
@@ -125,4 +128,5 @@ services:
 
 volumes:
   text-to-video-cache:
+  generator-output:
 #   tailscale-state:
