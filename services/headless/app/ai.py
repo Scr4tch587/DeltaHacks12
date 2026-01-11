@@ -3,10 +3,12 @@ import json
 import httpx
 from typing import Any
 
-# Global configuration
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Default to a free model on OpenRouter if not specified
-DEFAULT_MODEL = "google/gemini-2.0-flash-lite-preview-02-05:free"
+# Global configuration - Gemini API
+DEFAULT_MODEL = "gemini-2.5-flash-lite"
+
+def get_gemini_url(model: str) -> str:
+    """Get the Gemini API URL for a given model."""
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 async def get_field_value(
     field_label: str,
@@ -15,7 +17,7 @@ async def get_field_value(
     job_description: str
 ) -> str:
     """
-    Ask OpenRouter AI to determine the value for a form field.
+    Ask Gemini AI to determine the value for a form field.
 
     Args:
         field_label: The label of the input field.
@@ -26,12 +28,12 @@ async def get_field_value(
     Returns:
         The string value to fill in, or empty string if it decides to skip/unknown.
     """
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("Warning: OPENROUTER_API_KEY not found.")
+        print("Warning: GEMINI_API_KEY not found.")
         return ""
-        
-    model = os.getenv("OPENROUTER_MODEL", DEFAULT_MODEL)
+
+    model = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
 
     # Construct the prompt
     prompt = f"""
@@ -58,36 +60,36 @@ FIELD TO FILL: {field_label}
 """
 
     headers = {
-        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/deltahacks/headless", # Optional, for OpenRouter rankings
-        "X-Title": "DeltaHacks Headless Service"
+        "x-goog-api-key": api_key
     }
-    
+
     payload = {
-        "model": model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.1,
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+        }
     }
 
     try:
+        url = get_gemini_url(model)
         async with httpx.AsyncClient() as client:
-            response = await client.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30.0)
-            
+            response = await client.post(url, headers=headers, json=payload, timeout=30.0)
+
             if response.status_code != 200:
-                print(f"OpenRouter API Error {response.status_code}: {response.text}")
+                print(f"Gemini API Error {response.status_code}: {response.text}")
                 return ""
-                
+
             data = response.json()
-            if "choices" in data and len(data["choices"]) > 0:
-                answer = data["choices"][0]["message"]["content"].strip()
-                if answer == "SKIP":
-                    return ""
-                return answer
+            if "candidates" in data and len(data["candidates"]) > 0:
+                candidate = data["candidates"][0]
+                if "content" in candidate and "parts" in candidate["content"]:
+                    answer = candidate["content"]["parts"][0]["text"].strip()
+                    if answer == "SKIP":
+                        return ""
+                    return answer
             return ""
-            
+
     except Exception as e:
         print(f"Error getting AI value for {field_label}: {e}")
         return ""

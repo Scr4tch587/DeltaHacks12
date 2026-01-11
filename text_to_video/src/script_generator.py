@@ -1,4 +1,4 @@
-"""Script generation using OpenRouter LLM."""
+"""Script generation using Gemini LLM."""
 
 import json
 import re
@@ -6,13 +6,12 @@ from pathlib import Path
 from typing import Dict
 
 from config import (
-    OPENROUTER_API_KEY,
-    OPENROUTER_BASE_URL,
+    GEMINI_API_KEY,
     DEFAULT_MODEL,
     get_topic_dirs,
     get_available_images,
 )
-from clients.openrouter_client import OpenRouterClient
+from clients.gemini_client import GeminiClient
 from prompts.script_prompt_builder import ScriptPromptBuilder
 from utils.cache import load_script_cache, save_script_cache
 
@@ -20,10 +19,9 @@ from utils.cache import load_script_cache, save_script_cache
 class ScriptGenerator:
     """Generates dialogue scripts using LLM."""
 
-    def __init__(self, api_key: str = OPENROUTER_API_KEY, model: str = DEFAULT_MODEL):
-        self.api_client = OpenRouterClient(
+    def __init__(self, api_key: str = GEMINI_API_KEY, model: str = DEFAULT_MODEL):
+        self.api_client = GeminiClient(
             api_key=api_key,
-            base_url=OPENROUTER_BASE_URL,
             model=model
         )
         self.prompt_builder = ScriptPromptBuilder()

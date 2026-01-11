@@ -9,10 +9,10 @@ Automated short-form video generator: LLM writes dialogue → Fish.audio TTS →
 ## Architecture
 
 **1. Script Generation** (`script_generator.py`)
-- Uses `clients/openrouter_client.py` for API communication
+- Uses `clients/gemini_client.py` for API communication
 - Uses `prompts/script_prompt_builder.py` for prompt construction
 - Uses `utils/cache.py` for caching
-- OpenRouter API → LLM generates dialogue with emotion markers + image selection → JSON output
+- Gemini API → LLM generates dialogue with emotion markers + image selection → JSON output
 - Cache: `cache/<topic>/scripts/script.json`
 
 **2. Text-to-Speech** (`tts_generator.py`)
@@ -43,7 +43,7 @@ Character definitions, `get_available_images()` for image discovery, `get_topic_
 ```bash
 # Setup
 pip install -r requirements.txt
-cp .env.example .env  # Add OPENROUTER_API_KEY and FISH_AUDIO_API_KEY
+cp .env.example .env  # Add GEMINI_API_KEY and FISH_AUDIO_API_KEY
 
 # Full pipeline
 python main.py --topic "quantum physics"
@@ -85,7 +85,7 @@ Each character has multiple PNG variants in `assets/characters/{name}/`. LLM sel
 
 ## API Keys
 
-- **OpenRouter**: Script generation (~$0.01-0.05/script) - set in `.env`
+- **Gemini**: Script generation - set in `.env`
 - **Fish.audio**: TTS (~$0.05-0.10/line) - set in `.env`
 
 ## File Structure
@@ -98,7 +98,7 @@ PeterCS/
 │   ├── tts_generator.py               # TTS generation orchestrator
 │   ├── video_composer_ffmpeg.py      # Video composition orchestrator
 │   ├── clients/                       # API client modules
-│   │   ├── openrouter_client.py      # OpenRouter API wrapper
+│   │   ├── gemini_client.py          # Gemini API wrapper
 │   │   └── fish_audio_client.py       # Fish.audio API wrapper
 │   ├── prompts/                       # Prompt building modules
 │   │   └── script_prompt_builder.py   # LLM prompt construction

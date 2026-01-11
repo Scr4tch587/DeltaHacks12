@@ -1,7 +1,6 @@
 # LLM and API clients
-requests>=2.31.0
+requests>=2.31.0  # For Gemini API calls
 aiohttp>=3.9.0  # For async/concurrent HTTP requests
-openai>=1.0.0  # For OpenRouter compatibility
 fish-audio-sdk>=1.0.0  # Official Fish Audio SDK
 
 # Speech recognition for word-level timestamps (OPTIONAL - large dependency ~1.5GB)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**JobReels** - A hackathon project that delivers job listings as short-form vertical video content (TikTok/Reels style). Users swipe through AI-generated job summary videos, with semantic search matching jobs to user interests.
+**ReelJobs** - A hackathon project that delivers job listings as short-form vertical video content (TikTok/Reels style). Users swipe through AI-generated job summary videos, with semantic search matching jobs to user interests.
 
 ## Architecture
 

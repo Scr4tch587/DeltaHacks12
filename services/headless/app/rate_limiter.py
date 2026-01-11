@@ -46,7 +46,7 @@ class AsyncRateLimiter:
 # 50 requests per 10 seconds
 job_rate_limiter = AsyncRateLimiter(max_requests=50, time_window=10.0)
 embedding_rate_limiter = AsyncRateLimiter(max_requests=50, time_window=10.0)
-# AI (OpenRouter) rate limiter: 10 requests per second
+# AI (Gemini) rate limiter: 10 requests per second
 ai_rate_limiter = AsyncRateLimiter(max_requests=10, time_window=1.0)
 
 # Browser semaphore: limit concurrent browser instances (each uses ~200-400MB RAM)

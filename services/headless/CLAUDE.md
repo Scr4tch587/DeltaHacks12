@@ -37,7 +37,7 @@ docker compose -f docker-compose.prod.yml up -d    # Production
 
 **AI Integration:**
 - **Google Gemini** (`text-embedding-004`) - 768-dim embeddings for job descriptions
-- **OpenRouter** (Gemini 2.0 Flash) - Contextual form field answers via `app/ai.py`
+- **Google Gemini** (`gemini-2.5-flash-lite`) - Contextual form field answers via `app/ai.py`
 
 **Key patterns:**
 - Async/await throughout (FastAPI lifespan, Motor, Playwright async API)
@@ -51,8 +51,6 @@ Required in `.env`:
 MONGODB_URI=mongodb+srv://...
 MONGODB_DB=app
 GEMINI_API_KEY=AIza...
-OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
 ```
 
 ## Key Files
@@ -60,5 +58,5 @@ OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
 - `app/main.py` - FastAPI entry, lifespan manager, `/health` endpoint
 - `app/applying/greenhouse.py` - Complex form filler (handles dropdowns, React-Select, file uploads)
 - `app/fetching/scraper.py` - Job scraping orchestration with APScheduler
-- `app/ai.py` - OpenRouter API calls for form field reasoning
+- `app/ai.py` - Gemini API calls for form field reasoning
 - `manual_debug_greenhouse.py` - Visual debugging script with test data

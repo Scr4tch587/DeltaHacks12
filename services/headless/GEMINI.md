@@ -22,15 +22,15 @@ The service is built with **FastAPI** and uses **MongoDB** for persistence.
 -   **Browser Automation:** Playwright (Async API)
 -   **Database:** MongoDB (via Motor async driver)
 -   **AI/LLM:**
-    -   **OpenRouter:** Used for intelligent form filling (determining answers based on user profile).
-    -   **Google GenAI (Gemini):** Used for generating vector embeddings of job descriptions.
+    -   **Google Gemini** (`gemini-2.5-flash-lite`): Used for intelligent form filling (determining answers based on user profile).
+    -   **Google Gemini** (`text-embedding-004`): Used for generating vector embeddings of job descriptions.
 -   **Task Scheduling:** APScheduler (for periodic scraping).
 
 ## Directory Structure
 
 *   `app/` - Main application source code.
     *   `main.py` - FastAPI entry point and lifecycle management (starts scraper).
-    *   `ai.py` - AI integration. Handles calls to OpenRouter for form field reasoning.
+    *   `ai.py` - AI integration. Handles calls to Gemini for form field reasoning.
     *   `db.py` - Database layer. Manages `users` and `jobs` collections.
     *   `applying/` - Modules for filling applications.
         *   `greenhouse.py` - Logic for navigating and filling Greenhouse.io forms.
@@ -52,7 +52,7 @@ The service is built with **FastAPI** and uses **MongoDB** for persistence.
 ### Prerequisites
 -   Python 3.10+
 -   MongoDB Instance (Atlas or Local)
--   API Keys (OpenRouter, Google Gemini)
+-   API Keys (Google Gemini)
 
 ### Environment Variables
 Create a `.env` file in this directory:
@@ -64,8 +64,6 @@ MONGODB_DB=app
 
 # AI Configuration
 GEMINI_API_KEY=AIza...
-OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_MODEL=google/gemini-2.0-flash-lite-preview-02-05:free
 
 # Optional
 ENV=development

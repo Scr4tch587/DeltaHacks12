@@ -4,7 +4,7 @@ An automated pipeline that generates engaging educational videos featuring Famil
 
 ## Features
 
--   **AI-Generated Scripts**: Uses Claude 3.5 Sonnet via OpenRouter to generate witty educational dialogue
+-   **AI-Generated Scripts**: Uses Google Gemini to generate witty educational dialogue
 -   **Character Voice Synthesis**: Fish.audio TTS API for authentic character voices
 -   **Karaoke-Style Captions**: Word-by-word highlighting synchronized with speech
 -   **Professional Video Composition**: FFmpeg-based rendering for reliability and quality
@@ -20,7 +20,7 @@ PeterCS/
 │   ├── tts_generator.py               # TTS generation orchestrator
 │   ├── video_composer_ffmpeg.py      # Video composition orchestrator
 │   ├── clients/                       # API client modules
-│   │   ├── openrouter_client.py      # OpenRouter API wrapper
+│   │   ├── gemini_client.py          # Gemini API wrapper
 │   │   └── fish_audio_client.py       # Fish.audio API wrapper
 │   ├── prompts/                       # Prompt building modules
 │   │   └── script_prompt_builder.py   # LLM prompt construction
@@ -80,7 +80,7 @@ PeterCS/
    Create a `.env` file:
 
     ```env
-    OPENROUTER_API_KEY=your_openrouter_key_here
+    GEMINI_API_KEY=your_gemini_api_key_here
     ```
 
     Fish.audio API key is included in `config.py`
@@ -151,10 +151,9 @@ Videos are saved to `cache/<topic_name>/video/video_TIMESTAMP.mp4` with:
 
 ### Cost Breakdown
 
--   Script generation: ~$0.01-0.05 per topic (Claude 3.5 Sonnet)
+-   Script generation: Uses Google Gemini (gemini-3-flash-preview)
 -   TTS generation: ~$0.10-0.20 per video (Fish.audio)
 -   Video composition: Free (local FFmpeg processing)
--   **Total per video**: ~$0.15-0.25
 
 ## Development
 
@@ -170,7 +169,7 @@ See `CLAUDE.md` for detailed development documentation including:
 
 The codebase is modularized for maintainability:
 
-- **`clients/`**: API client wrappers (OpenRouter, Fish.audio)
+- **`clients/`**: API client wrappers (Gemini, Fish.audio)
 - **`prompts/`**: Prompt building and templates
 - **`utils/`**: Reusable utilities (text processing, media operations, caching)
 - **`video/`**: Video processing modules (transcription, subtitles, timing, FFmpeg)

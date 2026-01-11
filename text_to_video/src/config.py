@@ -96,8 +96,8 @@ def get_topic_dirs(topic: str):
     return dirs
 
 # API Configuration
-# OpenRouter API Key - can be set via environment variable or hardcoded here
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+# Gemini API Key - can be set via environment variable
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Fish Audio API Key - can be set via environment variable or hardcoded here
 FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "8d892f2b7da94ab1b92c274b71be3296")
 
@@ -233,8 +233,5 @@ AVAILABLE_EMOTIONS = [
 ]
 
 
-# OpenRouter Configuration
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-# Gemini 3 Flash Preview model
-DEFAULT_MODEL = "google/gemini-3-flash-preview"
-# Note: OPENROUTER_API_KEY is defined above in API Configuration section
+# Gemini Configuration
+DEFAULT_MODEL = "gemini-3-flash-preview"
