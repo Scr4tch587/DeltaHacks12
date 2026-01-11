@@ -33,6 +33,11 @@ cache/
 *.mp4
 *.wav
 
+# Keep background videos
+!text_to_video/assets/backgrounds/GTA.mp4
+!text_to_video/assets/backgrounds/Minecraft.mp4
+
+
 # Environment variables
 .env
 
