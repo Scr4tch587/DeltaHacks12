@@ -1,0 +1,223 @@
+{
+  "templates": [
+    {
+      "name": "The Hype Hook",
+      "description": "Standard Linear Flow - Best for prestigious companies or clear, strong job titles",
+      "sections": [
+        {
+          "name": "Company Intro",
+          "role": "The Hook",
+          "description": "Introduce the company in an engaging way that captures attention"
+        },
+        {
+          "name": "Role & Tech",
+          "role": "The Meat",
+          "description": "Describe the role and technologies involved in detail"
+        },
+        {
+          "name": "Requirements",
+          "role": "The Gatekeeper",
+          "description": "List what's needed to qualify for this role"
+        },
+        {
+          "name": "Compensation",
+          "role": "The Closer",
+          "description": "Reveal salary, benefits, and total compensation package"
+        }
+      ]
+    },
+    {
+      "name": "The Bag Alert",
+      "description": "Compensation First - Best for jobs with high salaries or great benefits",
+      "sections": [
+        {
+          "name": "Compensation",
+          "role": "The Hook",
+          "description": "Lead with salary, benefits, and total compensation to grab attention"
+        },
+        {
+          "name": "Role & Tech",
+          "role": "The Justification",
+          "description": "Explain what the role entails and why it pays so well"
+        },
+        {
+          "name": "Requirements",
+          "role": "The Filter",
+          "description": "List the qualifications needed to get this high-paying role"
+        },
+        {
+          "name": "Company",
+          "role": "The Reveal",
+          "description": "Reveal which company is offering this opportunity"
+        }
+      ]
+    },
+    {
+      "name": "The Skill Check",
+      "description": "Challenge/Requirements First - Best for very hard and competitive jobs",
+      "sections": [
+        {
+          "name": "Requirements",
+          "role": "The Challenge",
+          "description": "Start with the demanding requirements to set the bar high"
+        },
+        {
+          "name": "Company",
+          "role": "The Prestige",
+          "description": "Reveal the prestigious company behind these high standards"
+        },
+        {
+          "name": "Role & Tech",
+          "role": "The Job",
+          "description": "Describe what the actual work involves"
+        },
+        {
+          "name": "Compensation",
+          "role": "The Reward",
+          "description": "Show the compensation that matches this level of difficulty"
+        }
+      ]
+    },
+    {
+      "name": "The Bed Rotter",
+      "description": "Remote Work Focus - Best for fully remote roles, digital nomad friendly, or jobs with flexible hours",
+      "sections": [
+        {
+          "name": "Location",
+          "role": "The Hook",
+          "description": "Lead with remote work, location flexibility, or work-from-anywhere benefits"
+        },
+        {
+          "name": "Role",
+          "role": "The Work",
+          "description": "Describe what the role entails"
+        },
+        {
+          "name": "Pay",
+          "role": "The Wifi Money",
+          "description": "Reveal compensation - emphasize earning money from anywhere"
+        }
+      ]
+    },
+    {
+      "name": "The Moonshot",
+      "description": "Startup/Equity Focus - Best for AI Startups, Crypto, FinTech, or pre-IPO companies offering stock options",
+      "sections": [
+        {
+          "name": "The Mission",
+          "role": "The Hype",
+          "description": "Start with the company's mission, vision, and potential impact"
+        },
+        {
+          "name": "Equity",
+          "role": "The Gamble",
+          "description": "Highlight stock options, equity packages, and potential upside"
+        },
+        {
+          "name": "The Role",
+          "role": "The Contribution",
+          "description": "Describe how this role contributes to the mission"
+        }
+      ]
+    },
+    {
+      "name": "The Baby Gronk",
+      "description": "Internship/Junior Role - Best for entry-level, internships, new grads, or 'No Experience' roles",
+      "sections": [
+        {
+          "name": "The Opportunity",
+          "role": "The Open Door",
+          "description": "Emphasize that this is an entry point, no experience needed, learning opportunity"
+        },
+        {
+          "name": "Mentorship",
+          "role": "The Carry",
+          "description": "Highlight mentorship, training, growth opportunities, and support"
+        },
+        {
+          "name": "Perks",
+          "role": "The Bait",
+          "description": "Show the perks, benefits, and what makes it attractive for beginners"
+        }
+      ]
+    },
+    {
+      "name": "The Rocket Ship",
+      "description": "Early-Stage Startup - Best for high-growth startups where the selling point is growth potential",
+      "sections": [
+        {
+          "name": "The Vibe",
+          "role": "The Hook",
+          "description": "Start with company culture, energy, fast-paced environment, and startup excitement"
+        },
+        {
+          "name": "The Equity",
+          "role": "The Bait",
+          "description": "Highlight equity packages and potential for significant upside"
+        },
+        {
+          "name": "The Role",
+          "role": "The Grind",
+          "description": "Describe the role and what you'll be building"
+        },
+        {
+          "name": "Requirements",
+          "role": "The Gate",
+          "description": "List what's needed - often more flexible for startups"
+        }
+      ]
+    },
+    {
+      "name": "The Golden Handcuffs",
+      "description": "Big Tech / Corporate - Best for established corporations where the selling point is safety and perks, downside is boring work",
+      "sections": [
+        {
+          "name": "Perks/Lifestyle",
+          "role": "The Hook",
+          "description": "Lead with amazing benefits, work-life balance, stability, and perks"
+        },
+        {
+          "name": "Company Name",
+          "role": "The Flex",
+          "description": "Reveal the prestigious big tech or corporate name"
+        },
+        {
+          "name": "The Role",
+          "role": "The Easy Part",
+          "description": "Describe the role - may be more routine but stable"
+        },
+        {
+          "name": "Requirements",
+          "role": "The Check",
+          "description": "List qualifications needed"
+        }
+      ]
+    },
+    {
+      "name": "The Code Necromancer",
+      "description": "Legacy/Niche Firms - Best for banks, healthcare, or logistics firms with older tech stacks (Java, C++, .NET) where the selling point is job security and importance",
+      "sections": [
+        {
+          "name": "The Crisis",
+          "role": "The Hook",
+          "description": "Start with the critical importance of the systems, the problems they solve, or the impact"
+        },
+        {
+          "name": "The Skill",
+          "role": "The Niche",
+          "description": "Highlight the specialized/legacy tech skills needed (Java, C++, .NET, COBOL, etc.)"
+        },
+        {
+          "name": "The Reward",
+          "role": "The Security",
+          "description": "Emphasize job security, stability, good pay, and long-term career"
+        },
+        {
+          "name": "Company",
+          "role": "The CTA",
+          "description": "Reveal the company and encourage application"
+        }
+      ]
+    }
+  ]
+}

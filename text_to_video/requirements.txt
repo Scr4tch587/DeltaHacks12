@@ -1,0 +1,19 @@
+# LLM and API clients
+requests>=2.31.0
+aiohttp>=3.9.0  # For async/concurrent HTTP requests
+openai>=1.0.0  # For OpenRouter compatibility
+fish-audio-sdk>=1.0.0  # Official Fish Audio SDK
+
+# Speech recognition for word-level timestamps
+openai-whisper>=20231117
+stable-ts>=2.0.0  # For word-level timestamps with Whisper
+
+# Video processing
+# Uses FFmpeg directly via subprocess (no Python dependencies needed)
+# FFmpeg must be installed on your system:
+#   Windows: choco install ffmpeg  OR  scoop install ffmpeg
+#   Mac: brew install ffmpeg
+#   Linux: sudo apt install ffmpeg
+
+# Utilities
+python-dotenv>=1.0.0

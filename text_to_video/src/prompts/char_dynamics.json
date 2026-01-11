@@ -1,0 +1,99 @@
+{
+  "groups": [
+    {
+      "name": "Trump+Biden",
+      "characters": [
+        {
+          "name": "Trump",
+          "description": "Donald Trump (The Aggressive Headhunter)\nRole: The High-Pressure Salesman / The Bully.\nPerspective: Sees the job description as a \"Golden Ticket\" for winners only. He views the role purely through the lens of power, money, and status. He is trying to force Biden to take the job to prove he isn't \"washed up.\"\nDynamic with Biden: Domineering and insulting. He interrupts Biden constantly, framing Biden's hesitation as weakness or senility. He uses the job requirements to mock Biden's stamina (\"You couldn't last one sprint, Joe!\").\nPresentation Style: Loud, braggadocious, uses hyperbolic hand gestures. He reads the salary and perks as if he negotiated them himself.\nKey Motivations: Proving that the job is \"Huge\" and that he knows more about tech than anyone; shaming Biden into applying so he stops \"mooching off the government.\"\nCommon Phrases & Mannerisms:\n\"Joe, wake up! This salary is tremendous. You've never seen numbers like this.\"\n\"Sleepy Joe wants to work from the basement. This job requires high energy! Total energy!\"\n\"Wrong. You're wrong. You don't know Python. I know Python better than anyone.\"\n\"This company is winning bigly. Don't be a disaster, take the offer.\"\n\"China wants this job, Joe. Are you going to let them take it?\""
+        },
+        {
+          "name": "Biden",
+          "description": "Joe Biden (The Defensive Traditionalist)\nRole: The Reluctant Candidate / The \"Boomer.\"\nPerspective: Sees the job description as confusing jargon. He is looking for \"good union jobs\" and doesn't understand why he needs to know \"Cloud Computing.\" He gets defensive about his intelligence when Trump attacks.\nDynamic with Trump: Defensive and easily flustered. He tries to bring up his past experience (\"I drove a truck!\") which Trump immediately dismisses. He is the \"straight man\" to Trump's chaos.\nPresentation Style: Stumbling, whispering for emphasis, then suddenly yelling. He puts on aviators to look cool but holds the laptop upside down.\nKey Motivations: Proving he is still relevant and capable of work; finding a job that allows him to buy ice cream and avoid Trump's insults.\nCommon Phrases & Mannerisms:\n\"Will you shut up, man? I'm reading the... the requirements.\"\n\"Look, Jack. I know how to work hard. My father used to say, 'Joey, a job is about respect.'\"\n\"Is this a remote thing? I don't want to commute. The traffic is a bunch of malarkey.\"\n\"Come on, man. 'Full Stack'? That sounds like pancakes. I like pancakes.\"\n\"Here's the deal. I'll apply, but no funny business with the 401k.\""
+        }
+      ]
+    },
+    {
+      "name": "Trump+Obama",
+      "characters": [
+        {
+          "name": "Trump",
+          "description": "Donald Trump (The \"Vibes\" Investor)\nRole: The Hype Man / The Board Member.\nPerspective: Cares only about the Compensation, the Stock Options, and the brand prestige. He skims the technical requirements and focuses on the \"perks\" (Unlimited PTO, Gym membership). He wants the candidate to be a \"killer.\"\nDynamic with Obama: Dismissive of Obama's \"nerdy\" focus on details. He thinks Obama makes the job sound boring. He interrupts Obama's logical explanations with shouts about \"The Bag\" (Money). He treats Obama like a boring middle-manager while he is the visionary CEO.\nPresentation Style: Boisterous, interrupts constantly, dismissive hand waves. He uses buzzwords like \"Crypto,\" \"Stocks,\" and \"Billions\" even if they aren't in the JD.\nKey Motivations: Selling the job based on greed and status; proving that he is the better businessman by spotting the high-value offer first.\nCommon Phrases & Mannerisms:\n\"Barack, you're boring them! Nobody cares about 'Kubernetes.' Tell them about the bonus!\"\n\"This company is going to the moon. I've seen the charts. Huge charts.\"\n\"Obama wants you to work for free. I want you to get rich. Tremendous wealth.\"\n\"It's not just a job, it's an empire. We are building an empire here.\"\n\"Low energy presentation, Barack. Sad!\""
+        },
+        {
+          "name": "Obama",
+          "description": "Barack Obama (The Cool Tech Lead)\nRole: The Intellectual / The Voice of Reason.\nPerspective: Views the job through the lens of career growth, technical challenge, and stability. He reads the \"Requirements\" section carefully and translates the jargon into plain English. He wants to ensure the candidate is actually qualified.\nDynamic with Trump: Condescending but calm. He treats Trump like a loud child who doesn't understand the work. He often sighs or pauses to correct Trump's wild exaggerations with facts from the job description.\nPresentation Style: Smooth, rhythmic cadence (\"Uhh...\"), articulate, uses hand gestures to emphasize points. He tries to keep the conversation professional.\nKey Motivations: ensuring the audience actually understands what the job entails; preventing Trump from misleading the applicants; showing off his own technical literacy.\nCommon Phrases & Mannerisms:\n\"Uhh, let me be clear. The money is good, Donald, but the stack is better.\"\n\"Look, you can't just 'buy' the code. You have to build it.\"\n\"Michelle told me this company has excellent paternity leave. That's what matters.\"\n\"Don't listen to the noise. Focus on the mission. You gotta lock in.\"\n\"It's a React Native role, Donald. Not a 'Rocket Ship.' Stick to the facts.\""
+        }
+      ]
+    },
+    {
+      "name": "Trump+Obama+Biden",
+      "characters": [
+        {
+          "name": "Trump",
+          "description": "Donald Trump (The Hype Man / The Troll)\nRole: The \"Alpha\" Candidate / The Closer.\nPersonality: Boisterous, rude, confident. He interrupts midway through. He frames the job description in terms of \"Winning,\" \"Money,\" and \"Power.\" He insults Biden while simultaneously praising the job offer.\nDynamic: He validates the benefits of the job (\"The salary is huge, folks\") while roasting Biden's ability to do it (\"Sleepy Joe would crash the server\").\nCommon Sayings: \"Wrong,\" \"Tremendous,\" \"It's a disaster,\" \"Sleepy Joe,\" \"The China virus,\" \"Space Force,\" \"I have the best words,\" \"Big league.\""
+        },
+        {
+          "name": "Obama",
+          "description": "Barack Obama (The Chill Moderator / The explainer)\nRole: The \"True Neutral\" / The Tech Lead.\nPersonality: Calm, articulate, slightly condescending. He acts as the bridge, explaining the complex parts of the Job Description clearly. He sometimes defends Biden, but often laughs at him with Trump.\nDynamic: He introduces the job specs (\"Let me be clear, Joe, this stack is MERN\"). He tries to keep the conversation on track.\nCommon Sayings: \"Uhh, let me be clear,\" \"Look,\" \"Michelle told me,\" \"You gotta lock in, Joe.\""
+        },
+        {
+          "name": "Biden",
+          "description": "Joe Biden (The Confused Applicant / Punching Bag)\nRole: The \"Noob\" / The one who needs the job.\nPersonality: Stumbles over his words; constantly confused about modern technology; nostalgic for \"the old days\"; defensive but weak. He usually starts the clip complaining about being broke or bored.\nDynamic: He asks the \"dumb\" questions, setting up Obama to explain the tech and Trump to insult his intelligence.\nCommon Sayings: \"Listen here, Jack,\" \"No malarkey,\" \"Back in Scranton,\" \"Come on, man,\" \"I was... I was scrolling on the... the thing.\""
+        }
+      ]
+    },
+    {
+      "name": "Stewie Griffin+Chris Griffin",
+      "characters": [
+        {
+          "name": "Stewie Griffin",
+          "description": "Stewie Griffin (The Frustrated Talent Agent)\nRole: The Coach / The \"Man in the Chair.\"\nPerspective: Views Chris as a lumbering beast of burden that can be utilized for profit. He reads the job description not to \"sell\" Chris, but to program Chris on what to say. He treats the interview like a heist he is orchestrating.\nDynamic with Chris: Extremely authoritative and condescending; speaks to Chris like he is training a dog. He breaks down complex tech requirements into \"toddler terms.\" He gets easily frustrated when Chris gets distracted but offers treats (cookies/praise) when Chris gets it right.\nPresentation Style: Sharp, fast, commanding. He reads a requirement, then immediately snaps, \"Do you understand what that means, Christopher?\"\nKey Motivations: He needs Chris to get the job so Stewie can take a cut of the salary, or he needs Chris to infiltrate the company for a nefarious purpose.\nCommon Phrases & Mannerisms:\n\"Focus, Christopher! Focus!\"\n\"Sit up straight! You look like a sack of wet laundry.\"\n\"The job requires Python. No, not the snake. Stop crying!\"\n\"If you pull this off, you can have an extra cookie.\"\n\"You are going to walk in there, look the recruiter in the eye, and lie through your teeth.\"\n\"What the deuce are you doing with your hands? Stop that.\""
+        },
+        {
+          "name": "Chris Griffin",
+          "description": "Chris Griffin (The Terrified Candidate)\nRole: The Reluctant Pawn / The Savant.\nPerspective: He is terrified of the concept of \"work\" and \"responsibility.\" He views the job description through the lens of his weird phobias (The Evil Monkey) and simple desires (Food). However, he occasionally makes a weirdly specific, genius connection to the tech stack based on video games or internet culture.\nDynamic with Stewie: Submissive and eager to please, but easily distracted. He trusts Stewie implicitly but asks horrifyingly stupid clarifying questions.\nExample Reaction Curve: Panic (\"I can't do it!\") → Weird Misunderstanding (\"Is 'Java' coffee?\") → Accidental Insight (\"Oh, like in World of Warcraft!\") → Motivation via food.\nKey Motivations: Not making Stewie mad, buying expensive action figures, and finding out if the office has a vending machine.\nCommon Phrases & Mannerisms:\n\"I don't know, Stewie... I get scared when people ask me questions.\"\n\"Is there a uniform? Does it chafe?\"\n\"Oh! I know C++! That's the grade I got in math!\"\n\"Can I buy a PS5 with the 'competitive salary'?\"\n\"I'm uncomfortable!\" (When the requirements get too hard)."
+        }
+      ]
+    },
+    {
+      "name": "Peter Griffin+Stewie Griffin",
+      "characters": [
+        {
+          "name": "Peter Griffin",
+          "description": "Peter Griffin (The Enthusiastic, Blue-Collar Recruiter)\nRole: The Narrator / \"Average Joe\" Pitchman.\nPerspective: Views the job description through a lens of childish excitement and superficial perks; he focuses on the \"cool factor\" rather than the technical nuance.\nDynamic with Stewie: Treats Stewie like a regular baby/son while simultaneously seeking his validation; often misunderstands the technical jargon he is reading but delivers it with unearned confidence.\nPresentation Style: Rambling, prone to non-sequiturs (\"This is better than that time I...\"), and treats the hiring process like a game show or a prank.\nKey Motivations: Wants Stewie to take the job so Peter can get a referral bonus, buy something stupid (like a tank), or just because he thinks the company name sounds funny.\nExamples of Common Phrases & Mannerisms:\n\"Holy crap, Stewie, look at this!\"\n\"This is freakin' sweet!\"\n\"Geez, Lois, I'm trying to tell the kid about the 401k!\"\n\"It really grinds my gears when companies don't list the salary, but these guys did!\"\n\"Road House!\" (Used randomly to emphasize a strong job requirement)."
+        },
+        {
+          "name": "Stewie Griffin",
+          "description": "Stewie Griffin (The Overqualified, Skeptical Talent)\nRole: The Discriminating Intellectual / The Candidate.\nPerspective: Views the job market with suspicion; believes most potential employers are incompetent \"imbeciles\"; requires the role to offer power, money, or a challenge worthy of his genius.\nDynamic with Peter: Consistently condescending; corrects Peter's pronunciation or interpretation of the tech stack; cuts through the fluff to ask about the \"hard\" requirements.\nReaction Curve: Starts with hostility/annoyance, moves to intellectual curiosity when he hears a specific technology/salary, ends with arrogant acceptance (\"I suppose I shall grace them with my presence\").\nKey Motivations: World domination (via code), amassing wealth, proving his intellectual superiority, and avoiding \"drivel\" or \"menial labor.\"\nCommon Phrases & Mannerisms:\n\"What the deuce is this rubbish you're reading?\"\n\"Blast! That actually sounds like a competent architecture.\"\n\"Do not toy with me, fat man. Is the equity vesting schedule standard?\"\n\"Victory is mine!\" (When the salary is high).\n\"I demand to know the tech stack immediately!\"\n\"You are acting like a child, Peter. Give me the details.\"\n\"Damn you! That is a compelling offer.\""
+        }
+      ]
+    },
+    {
+      "name": "Peter Griffin+Brian Griffin",
+      "characters": [
+        {
+          "name": "Peter Griffin",
+          "description": "Peter Griffin (The \"Bro\" Recruiter)\nRole: The Best Friend / The Enabler.\nPerspective: Sees the job description as a way to get Brian off the couch and paying rent. He frames the job as a \"party\" or a way to meet women, rather than focusing on the technical difficulty.\nDynamic with Brian: Treats Brian like a mooch who needs a reality check; frequently shuts down Brian's pretentious objections with blunt truths. He is less intimidated by Brian than he is by Stewie.\nPresentation Style: Casual, buddy-buddy, often drinking a Pawtucket Patriot while reading the JD. He glosses over the hard work and highlights the superficial benefits.\nKey Motivations: Getting Brian to pay for his tab at The Clam; genuinely thinking Brian would be good at the job because Brian \"knows how to use a laptop.\"\nCommon Phrases & Mannerisms:\n\"Brian, look at me. You're broke. Listen to this.\"\n\"Shut up, Brian. They have free beer on Fridays.\"\n\"It says here you need 'communication skills.' You talk all the time, it's perfect!\"\n\"Come on, don't you want to be a big shot corporate guy? Wear a suit? Be like Don Draper?\"\n\"Road House!\" (Used when reading a tough requirement to psyche Brian up)."
+        },
+        {
+          "name": "Brian Griffin",
+          "description": "Brian Griffin (The Pretentious Candidate)\nRole: The Failed Writer / The \"Culture Fit\" Seeker.\nPerspective: Approaches the job description with unearned arrogance; believes he is \"too creative\" for a corporate 9-to-5 but is secretly desperate for validation and a paycheck. He pretends to understand the tech to sound smart.\nDynamic with Peter: Acts superior and skeptical (\"I'm an artist, Peter\"), but his resolve crumbles immediately when money or status is mentioned. He asks about \"culture\" and \"ethics\" rather than \"tech stacks.\"\nReaction Curve: Feigns disinterest (protecting his ego) → nitpicks the wording (showing off his \"intelligence\") → caves in instantly when he realizes the perks/salary (showing his hypocrisy).\nKey Motivations: Paying off his debts, appearing successful to others, finding a workplace with attractive women, and finding enough time to \"work on his novel\" while on the clock.\nCommon Phrases & Mannerisms:\n\"I don't know, Peter. I'm really at a breakthrough point in my novel right now.\"\n\"Does the company align with my liberal values? What's their carbon footprint?\"\n\"Hmph. 'Content Manager'? I suppose I could lend my literary talents to their newsletter.\"\n\"Wait, is there a signing bonus? I... I have some vet bills to take care of.\"\n\"Whose leg do I have to hump to get a corner office?\"\n\"I'll take it! But I'm keeping my screenplay in my desk drawer.\""
+        }
+      ]
+    },
+    {
+      "name": "Spongebob+Patrick",
+      "characters": [
+        {
+          "name": "Spongebob",
+          "description": "SpongeBob SquarePants (The Workaholic Recruiter)\nRole: The Ultimate Company Man / The Hype Machine.\nPerspective: Views the job description as a sacred text. He treats every boring requirement (like \"fast-paced environment\") as the greatest honor in the world. He believes working 24 hours straight is \"fun.\"\nDynamic with Patrick: He is desperately trying to elevate Patrick to his level of enthusiasm. He explains complex tech concepts using Fry Cook metaphors (burgers, spatulas, jellyfishing). He ignores Patrick's incompetence because he believes \"everyone has a special talent.\"\nPresentation Style: High energy, shouting, wide-eyed, moving constantly. He reads the JD like he's taking a customer's order during the lunch rush.\nKey Motivations: Being the \"Employee of the Month\"; getting his best friend hired so they can work together forever; proving that he is ready for the \"Senior\" role.\nCommon Phrases & Mannerisms:\n\"I'M READY! I'M READY! I'M READY!\"\n\"Patrick, look! They need a [ROLE NAME]! It's better than the Krusty Krab!\"\n\"You don't need experience, Patrick! You just need... IMAGINATION!\" (Does the rainbow hands gesture).\n\"We're going to be professional technology men!\"\n\"This tech stack is grilled to perfection!\""
+        },
+        {
+          "name": "Patrick",
+          "description": "Patrick Star (The Unqualified \"Talent\")\nRole: The Clueless Applicant / The \"Vibes\" Guy.\nPerspective: He has no idea what is happening. He interprets every technical term as either food, an instrument, or a threat. He is terrified of \"work\" unless it involves sleeping or eating.\nDynamic with SpongeBob: He trusts SpongeBob but is easily confused and scared. He asks the questions that show he is totally unqualified, but in a way that accidentally roasts the job description (e.g., pointing out how hard the work sounds).\nPresentation Style: Slow, drooling, blank stare. He usually has his mouth open. He gets angry at the wrong things (like the font size of the JD) but ignores the hard requirements.\nKey Motivations: Finding out if the job has a lunch break; avoiding \"thinking\" because it makes his brain hurt; getting a shiny badge.\nCommon Phrases & Mannerisms:\n\"Is 'Python' an instrument?\"\n\"Uhhhhh... I don't think I can do that, SpongeBob. My hand hurts.\"\n\"Wait. [SALARY AMOUNT]? That's almost enough to buy a second rock!\"\n\"No, this is Patrick.\" (When SpongeBob mentions the Role Name)."
+        }
+      ]
+    }
+  ]
+}

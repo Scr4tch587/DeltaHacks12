@@ -1,0 +1,56 @@
+{
+  "topic": "Senior Python Backend Developer\n    \n    We are looking for an experienced Python developer to lead our backend team.\n    \n    Requirements:\n    - 5+ years Python development\n    - FastAPI or Django experience\n    - PostgreSQL and Redis\n    - Docker and Kubernetes\n    \n    Responsibilities:\n    - Design and implement scalable backend systems\n    - Lead technical discussions\n    - Mentor junior developers\n    - Deploy and maintain production systems",
+  "title": "Senior Python Backend Developer",
+  "lines": [
+    {
+      "character": "peter",
+      "text": "(excited) Holy crap, Stewie! This Python Backend lead role is the ultimate entry point into a massive tech empire!",
+      "images": [
+        "excited_peter"
+      ]
+    },
+    {
+      "character": "stewie",
+      "text": "(sarcastic) A 'lead' role as an entry point? (exasperated) You babbling buffoon, that's not how a career ladder works!",
+      "images": [
+        "exasperated_stewie",
+        "exasperated_stewie"
+      ]
+    },
+    {
+      "character": "peter",
+      "text": "(confident) Relax, kid! They want you to mentor junior devs. (laughing) It's like being a cool big brother who gets paid!",
+      "images": [
+        "laughing_peter",
+        "laughing_peter"
+      ]
+    },
+    {
+      "character": "stewie",
+      "text": "(curious) Mentorship, you say? (interested) I suppose molding tiny, inferior minds into my digital foot-soldiers has some appeal.",
+      "images": [
+        "smirking_stewie",
+        "mischievous_stewie"
+      ]
+    },
+    {
+      "character": "peter",
+      "text": "(excited) Road house! Plus, they have Docker, Kubernetes, and a sweet salary with full equity. (happy) Think of the toys!",
+      "images": [
+        "excited_peter",
+        "excited_peter",
+        "laughing_peter"
+      ]
+    },
+    {
+      "character": "stewie",
+      "text": "(satisfied) K8s and equity? (confident) Very well, fat man. Victory is mine! I shall grace their backend with my genius.",
+      "images": [
+        "smirking_stewie",
+        "smirking_stewie",
+        "mischievous_stewie"
+      ]
+    }
+  ],
+  "_cache_key": "Senior Python Backend Developer\n    \n    We are looking for an experienced Python developer to lead our backend team.\n    \n    Requirements:\n    - 5+ years Python development\n    - FastAPI or Django experience\n    - PostgreSQL and Redis\n    - Docker and Kubernetes\n    \n    Responsibilities:\n    - Design and implement scalable backend systems\n    - Lead technical discussions\n    - Mentor junior developers\n    - Deploy and maintain production systems|Peter Griffin+Stewie Griffin|The Baby Gronk"
+}
