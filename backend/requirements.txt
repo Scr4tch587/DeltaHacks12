@@ -4,6 +4,8 @@ motor
 pymongo
 boto3
 google-generativeai
+bcrypt
 python-jose[cryptography]
-passlib[bcrypt]
 python-multipart
+passlib[bcrypt]
+email-validator

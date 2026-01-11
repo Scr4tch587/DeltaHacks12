@@ -9,47 +9,43 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-  const { user, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const backgroundColor = useThemeColor({}, 'background');
 
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === '(tabs)';
+    const inAuthGroup = segments[0] === 'login';
 
-    if (!user && inAuthGroup) {
-      // User is not authenticated and trying to access protected routes
+    if (!isAuthenticated && !inAuthGroup) {
       router.replace('/login');
-    } else if (user && !inAuthGroup) {
-      // User is authenticated and trying to access login
+    } else if (isAuthenticated && inAuthGroup) {
       router.replace('/(tabs)');
     }
-  }, [user, isLoading, segments]);
+  }, [isAuthenticated, isLoading, segments]);
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor }}>
         <ActivityIndicator size="large" />
       </View>
     );
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <Stack>
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="+not-found" />
+    </Stack>
   );
 }
 
@@ -70,8 +66,11 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AuthProvider>
+        <RootLayoutNav />
+        <StatusBar style="auto" />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
