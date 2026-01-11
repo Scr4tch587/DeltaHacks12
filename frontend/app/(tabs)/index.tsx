@@ -245,30 +245,31 @@ const VideoWrapper = ({
   const [dislikeCount, setDislikeCount] = useState(150);
 
   const handleLike = () => {
+    // Lock the upvote button - once liked, cannot be removed
     if (isLiked) {
-      setIsLiked(false);
-      setLikeCount(likeCount - 1);
-    } else {
-      setIsLiked(true);
-      setLikeCount(likeCount + 1);
-      if (isDisliked) {
-        setIsDisliked(false);
-        setDislikeCount(dislikeCount - 1);
-      }
+      return; // Already liked, do nothing
+    }
+    
+    setIsLiked(true);
+    setLikeCount(likeCount + 1);
+    if (isDisliked) {
+      setIsDisliked(false);
+      setDislikeCount(dislikeCount - 1);
     }
   };
 
   const handleDislike = () => {
+    // Cannot dislike if already liked (upvote is locked)
+    if (isLiked) {
+      return; // Cannot remove like once upvoted
+    }
+    
     if (isDisliked) {
       setIsDisliked(false);
       setDislikeCount(dislikeCount - 1);
     } else {
       setIsDisliked(true);
       setDislikeCount(dislikeCount + 1);
-      if (isLiked) {
-        setIsLiked(false);
-        setLikeCount(likeCount - 1);
-      }
     }
   };
 
