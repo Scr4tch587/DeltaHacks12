@@ -1,162 +1,114 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   TextInput,
-  Pressable,
   StyleSheet,
+  Pressable,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/colors';
+import { useRouter } from 'expo-router';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
 import { useAuth } from '@/contexts/AuthContext';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function LoginScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
-  const { login, register } = useAuth();
-
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { login, register } = useAuth();
+  const router = useRouter();
+
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const tintColor = useThemeColor({}, 'tint');
+  const borderColor = useThemeColor({}, 'tabIconDefault');
 
   const handleSubmit = async () => {
-    if (!username.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    if (!isLogin && !email.trim()) {
-      Alert.alert('Error', 'Please enter your email');
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
     setIsLoading(true);
     try {
       if (isLogin) {
-        await login(username.trim(), password);
+        await login(email.trim(), password);
       } else {
-        await register(username.trim(), email.trim(), password);
+        await register(email.trim(), password);
       }
-      // Navigation will happen automatically via AuthProvider state change
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Authentication failed');
+      Alert.alert('Error', error.message || 'An error occurred');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const isDark = colorScheme === 'dark';
-
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <View style={styles.content}>
-        {/* Logo/Icon */}
-        <View style={[styles.logoContainer, { backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0' }]}>
-          <Ionicons name="videocam" size={64} color={colors.tint} />
-        </View>
-
-        {/* Title */}
-        <Text style={[styles.title, { color: colors.text }]}>
+      <ThemedView style={styles.content}>
+        <ThemedText type="title" style={styles.title}>
           {isLogin ? 'Welcome Back' : 'Create Account'}
-        </Text>
-        <Text style={[styles.subtitle, { color: isDark ? '#a0a0a0' : '#737373' }]}>
+        </ThemedText>
+        
+        <ThemedText style={styles.subtitle}>
           {isLogin ? 'Sign in to continue' : 'Sign up to get started'}
-        </Text>
+        </ThemedText>
 
-        {/* Form */}
         <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Username</Text>
+          <View style={[styles.inputContainer, { borderColor }]}>
             <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5',
-                  color: colors.text,
-                  borderColor: isDark ? '#404040' : '#e0e0e0',
-                },
-              ]}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Enter your username"
-              placeholderTextColor={isDark ? '#666' : '#999'}
+              style={[styles.input, { color: textColor }]}
+              placeholder="Email"
+              placeholderTextColor={borderColor}
+              value={email}
+              onChangeText={setEmail}
               autoCapitalize="none"
-              autoCorrect={false}
+              keyboardType="email-address"
+              autoComplete="email"
               editable={!isLoading}
             />
           </View>
 
-          {!isLogin && (
-            <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: colors.text }]}>Email</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5',
-                    color: colors.text,
-                    borderColor: isDark ? '#404040' : '#e0e0e0',
-                  },
-                ]}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Enter your email"
-                placeholderTextColor={isDark ? '#666' : '#999'}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!isLoading}
-              />
-            </View>
-          )}
-
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
+          <View style={[styles.inputContainer, { borderColor }]}>
             <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? '#2a2a2a' : '#f5f5f5',
-                  color: colors.text,
-                  borderColor: isDark ? '#404040' : '#e0e0e0',
-                },
-              ]}
+              style={[styles.input, { color: textColor }]}
+              placeholder="Password"
+              placeholderTextColor={borderColor}
               value={password}
               onChangeText={setPassword}
-              placeholder="Enter your password"
-              placeholderTextColor={isDark ? '#666' : '#999'}
               secureTextEntry
+              autoCapitalize="none"
+              autoComplete={isLogin ? 'password' : 'password-new'}
               editable={!isLoading}
             />
           </View>
 
           <Pressable
-            style={[
-              styles.submitButton,
-              { backgroundColor: colors.tint },
-              isLoading && styles.submitButtonDisabled,
-            ]}
+            style={[styles.button, { backgroundColor: tintColor }, isLoading && styles.buttonDisabled]}
             onPress={handleSubmit}
             disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitButtonText}>
+              <ThemedText style={styles.buttonText}>
                 {isLogin ? 'Sign In' : 'Sign Up'}
-              </Text>
+              </ThemedText>
             )}
           </Pressable>
 
@@ -165,14 +117,14 @@ export default function LoginScreen() {
             onPress={() => setIsLogin(!isLogin)}
             disabled={isLoading}
           >
-            <Text style={[styles.switchButtonText, { color: colors.tint }]}>
+            <ThemedText style={styles.switchText}>
               {isLogin
                 ? "Don't have an account? Sign Up"
                 : 'Already have an account? Sign In'}
-            </Text>
+            </ThemedText>
           </Pressable>
         </View>
-      </View>
+      </ThemedView>
     </KeyboardAvoidingView>
   );
 }
@@ -184,69 +136,51 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 48,
-  },
-  logoContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignSelf: 'center',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 32,
+    padding: 20,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
     marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    marginBottom: 32,
     textAlign: 'center',
-    marginBottom: 48,
+    opacity: 0.7,
   },
   form: {
     width: '100%',
   },
   inputContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  input: {
-    height: 50,
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
-  submitButton: {
-    height: 50,
+  input: {
+    fontSize: 16,
+    paddingVertical: 12,
+  },
+  button: {
     borderRadius: 8,
-    justifyContent: 'center',
+    paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
   },
-  submitButtonDisabled: {
+  buttonDisabled: {
     opacity: 0.6,
   },
-  submitButtonText: {
+  buttonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
   switchButton: {
     marginTop: 24,
-    paddingVertical: 12,
     alignItems: 'center',
   },
-  switchButtonText: {
+  switchText: {
     fontSize: 14,
-    fontWeight: '500',
+    opacity: 0.7,
   },
 });

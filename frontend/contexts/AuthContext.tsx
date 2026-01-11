@@ -1,133 +1,173 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
-// Normalize URL helper
+// Helper function to normalize URLs (remove trailing slashes)
 const normalizeUrl = (url: string): string => {
   return url.replace(/\/+$/, '');
 };
 
 const API_BASE_URL = normalizeUrl(process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000');
 const TOKEN_KEY = 'auth_token';
+const USER_KEY = 'user_data';
 
 interface User {
-  id: string;
-  username: string;
+  user_id: string;
   email: string;
-  created_at?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  checkAuth: () => Promise<void>;
+  isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load token from secure storage on mount
+  // Load stored auth data on mount
   useEffect(() => {
-    checkAuth();
+    loadStoredAuth();
   }, []);
 
-  const storeToken = async (tokenValue: string) => {
-    await SecureStore.setItemAsync(TOKEN_KEY, tokenValue);
-    setToken(tokenValue);
-  };
-
-  const removeToken = async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    setToken(null);
-  };
-
-  const checkAuth = async () => {
+  const loadStoredAuth = async () => {
     try {
-      setIsLoading(true);
       const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+      const storedUser = await SecureStore.getItemAsync(USER_KEY);
       
-      if (!storedToken) {
-        setToken(null);
-        setUser(null);
-        setIsLoading(false);
-        return;
-      }
-
-      // Verify token with backend
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${storedToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
+      if (storedToken && storedUser) {
         setToken(storedToken);
-        setUser(userData);
-      } else {
-        // Token is invalid, remove it
-        await removeToken();
-        setUser(null);
+        setUser(JSON.parse(storedUser));
       }
     } catch (error) {
-      console.error('Error checking auth:', error);
-      await removeToken();
-      setUser(null);
+      console.error('Error loading stored auth:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const login = async (username: string, password: string) => {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, password }),
-    });
+  const login = async (email: string, password: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Login failed' }));
-      throw new Error(error.detail || 'Login failed');
+      if (!response.ok) {
+        // Try to parse JSON error response
+        let errorMessage = 'Login failed';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch {
+          // If JSON parsing fails, try to get text response
+          try {
+            const text = await response.text();
+            errorMessage = text || errorMessage;
+          } catch {
+            // Use status-based message if all else fails
+            errorMessage = `Login failed (${response.status})`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      const userData: User = {
+        user_id: data.user_id,
+        email: data.email,
+      };
+
+      // Store token and user data
+      await SecureStore.setItemAsync(TOKEN_KEY, data.access_token);
+      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(userData));
+
+      setToken(data.access_token);
+      setUser(userData);
+    } catch (error: any) {
+      // Handle network errors with a user-friendly message
+      if (error?.message === 'Network request failed' || error?.name === 'TypeError') {
+        // Use console.warn for expected network failures (backend not running)
+        console.warn('Login: Network request failed - backend may not be running');
+        throw new Error('Cannot connect to server. Please check your connection and ensure the backend is running.');
+      }
+      console.error('Login error:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    await storeToken(data.access_token);
-    setUser(data.user);
   };
 
-  const register = async (username: string, email: string, password: string) => {
-    const response = await fetch(`${API_BASE_URL}/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, email, password }),
-    });
+  const register = async (email: string, password: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Registration failed' }));
-      throw new Error(error.detail || 'Registration failed');
+      if (!response.ok) {
+        // Try to parse JSON error response
+        let errorMessage = 'Registration failed';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch {
+          // If JSON parsing fails, try to get text response
+          try {
+            const text = await response.text();
+            errorMessage = text || errorMessage;
+          } catch {
+            // Use status-based message if all else fails
+            errorMessage = `Registration failed (${response.status})`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      const userData: User = {
+        user_id: data.user_id,
+        email: data.email,
+      };
+
+      // Store token and user data
+      await SecureStore.setItemAsync(TOKEN_KEY, data.access_token);
+      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(userData));
+
+      setToken(data.access_token);
+      setUser(userData);
+    } catch (error: any) {
+      // Handle network errors with a user-friendly message
+      if (error?.message === 'Network request failed' || error?.name === 'TypeError') {
+        // Use console.warn for expected network failures (backend not running)
+        console.warn('Registration: Network request failed - backend may not be running');
+        throw new Error('Cannot connect to server. Please check your connection and ensure the backend is running.');
+      }
+      console.error('Registration error:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    await storeToken(data.access_token);
-    setUser(data.user);
   };
 
   const logout = async () => {
-    await removeToken();
-    setUser(null);
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await SecureStore.deleteItemAsync(USER_KEY);
+      setToken(null);
+      setUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return (
@@ -139,18 +179,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
-        checkAuth,
+        isAuthenticated: !!user && !!token,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};
