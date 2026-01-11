@@ -228,6 +228,10 @@ const VideoWrapper = ({
   const bottomHeight = useBottomTabBarHeight();
   const { index, item } = data;
 
+  // Track if this video should be playing
+  const shouldPlay = visibleIndex === index && !pauseOverride;
+
+  // Always create player with real URL - the player handles lazy loading internally
   const player = useVideoPlayer(allVideos[index], (player) => {
     player.loop = true;
     player.muted = false;
@@ -267,31 +271,37 @@ const VideoWrapper = ({
     }
   };
 
-  // Control playback based on visibility and pause override
+  // Simple playback control - just play/pause based on visibility
   useEffect(() => {
-    if (visibleIndex === index && !pauseOverride) {
-      // Delay play slightly to ensure player is initialized
-      const timeoutId = setTimeout(() => {
-        try {
-          if (!player.playing) {
-            player.play();
-          }
-        } catch (error) {
-          console.warn(`[Video ${index}] Play error:`, error);
-        }
-      }, 100);
-      return () => clearTimeout(timeoutId);
+    console.log(`[Video ${index}] Effect running: shouldPlay=${shouldPlay}, visibleIndex=${visibleIndex}, pauseOverride=${pauseOverride}`);
+    
+    if (shouldPlay) {
+      console.log(`[Video ${index}] Calling player.play()`);
+      try {
+        player.play();
+      } catch (error) {
+        console.warn(`[Video ${index}] Play error:`, error);
+      }
     } else {
-      player.pause();
+      console.log(`[Video ${index}] Calling player.pause()`);
+      try {
+        player.pause();
+      } catch (e) {
+        console.warn(`[Video ${index}] Pause error:`, e);
+      }
     }
-  }, [visibleIndex, index, pauseOverride, player]);
+  }, [shouldPlay, visibleIndex, pauseOverride, index]);
 
   // Reset video to 0:00 when scrolling away from it
   useEffect(() => {
     if (visibleIndex !== index) {
-      player.currentTime = 0;
+      try {
+        player.currentTime = 0;
+      } catch (e) {
+        // Ignore reset errors
+      }
     }
-  }, [visibleIndex, index, player]);
+  }, [visibleIndex, index]);
 
   return (
     <View
@@ -445,8 +455,19 @@ export default function HomeScreen() {
   };
 
   const onViewableItemsChanged = (event: any) => {
-    const newIndex = Number(event.viewableItems.at(-1)?.key);
-    if (!Number.isNaN(newIndex)) setVisibleIndex(newIndex);
+    const lastItem = event.viewableItems.at(-1);
+    if (!lastItem) return;
+    
+    // Extract index from key (format: "video-{index}" or just the index)
+    const key = lastItem.key;
+    const newIndex = key?.startsWith?.("video-") 
+      ? Number(key.replace("video-", ""))
+      : Number(key);
+    
+    if (!Number.isNaN(newIndex) && newIndex !== visibleIndex) {
+      console.log(`[FlatList] Visible index changed: ${visibleIndex} → ${newIndex}`);
+      setVisibleIndex(newIndex);
+    }
   };
 
   const pause = () => {
@@ -562,11 +583,15 @@ export default function HomeScreen() {
         pagingEnabled
         snapToInterval={Platform.OS === "android" ? height - bottomHeight : undefined}
         initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        removeClippedSubviews={true}
         showsVerticalScrollIndicator={false}
         onViewableItemsChanged={onViewableItemsChanged}
         data={allVideos}
         onEndReachedThreshold={0.3}
         onEndReached={fetchMoreData}
+        keyExtractor={(item, index) => `video-${index}`}
         renderItem={(data) => {
           return (
             <VideoWrapper
