@@ -309,22 +309,23 @@ def generate_video_from_text(job_description: str, output_path: str, output_name
     print(f"[OK] Copied {len(list(audio_dir.glob('*.mp3')))} audio files")
     
     # Copy video (now HLS structure: hls/{video_id}/)
-    # video_path points to hls/{video_id}/master.m3u8, we need to copy the entire hls/ directory
-    hls_src = Path(video_path).parent.parent  # Go up from master.m3u8 to hls/
-    hls_dst = output_path / "hls"
-    if hls_src.exists():
+    # video_path points to hls/{video_id}/master.m3u8
+    # Only copy the specific video_id directory, not the entire hls/ tree
+    hls_video_id_dir = Path(video_path).parent  # Go up from master.m3u8 to hls/{video_id}/
+    hls_dst = output_path / "hls" / output_name
+    if hls_video_id_dir.exists():
+        hls_dst.parent.mkdir(parents=True, exist_ok=True)
         if hls_dst.exists():
             shutil.rmtree(hls_dst)
-        shutil.copytree(hls_src, hls_dst)
+        shutil.copytree(hls_video_id_dir, hls_dst)
         print(f"[OK] Copied HLS directory structure")
         print(f"  `-- hls/{output_name}/")
         print(f"      |-- master.m3u8")
         print(f"      |-- poster.jpg")
         print(f"      `-- 720p/ (with .ts segments)")
     
-    # Also keep the old MP4 reference for backwards compatibility
     # Extract the actual master.m3u8 path
-    master_m3u8_path = output_path / "hls" / output_name / "master.m3u8"
+    master_m3u8_path = hls_dst / "master.m3u8"
     
     print(f"\n{'='*60}")
     print(f"SUCCESS! HLS Video generated and saved to:")

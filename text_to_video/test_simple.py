@@ -39,8 +39,7 @@ if __name__ == "__main__":
     # Generate video (returns path to hls/{video_id}/master.m3u8)
     master_playlist = generate_video_from_text(
         job_description=job_description.strip(),
-        output_path=str(output_path),
-        output_name="senior_python_dev"
+        output_path=str(output_path)
     )
     
     print(f"\n{'='*60}")
@@ -50,7 +49,7 @@ if __name__ == "__main__":
     print(f"\nOutput structure:")
     print(f"  hls_output/")
     print(f"  `-- hls/")
-    print(f"      `-- senior_python_dev/")
+    print(f"      `-- output/")
     print(f"          |-- master.m3u8")
     print(f"          |-- poster.jpg")
     print(f"          `-- 720p/")
