@@ -19,8 +19,6 @@ services:
             - GEMINI_API_KEY=${GEMINI_API_KEY}
             - HEADLESS_URL=http://headless:8001
             - VIDEO_URL=http://video:8002
-            - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
-            - API_KEY=${API_KEY}
         depends_on:
             headless:
                 condition: service_healthy
@@ -45,7 +43,6 @@ services:
             - MONGODB_DB=${MONGODB_DB}
             - GEMINI_API_KEY=${GEMINI_API_KEY}
             - JOBS_PER_COMPANY=${JOBS_PER_COMPANY:-10}
-            - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
             interval: 30s
@@ -69,7 +66,7 @@ services:
             - VULTR_SECRET_KEY=${VULTR_SECRET_KEY}
             - VULTR_BUCKET=${VULTR_BUCKET}
             - GEMINI_API_KEY=${GEMINI_API_KEY}
-            - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY}
+            - INTERNAL_API_KEY=${INTERNAL_API_KEY}
         volumes:
             - ./services/video/templates:/app/templates:ro
         healthcheck:

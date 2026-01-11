@@ -1,6 +1,6 @@
 /**
  * App Configuration
- * Environment variables for Vultr Object Storage
+ * Environment variables for Vultr Object Storage and API endpoints
  */
 
 // These will be replaced at build time by Metro bundler

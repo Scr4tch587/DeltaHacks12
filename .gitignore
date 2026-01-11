@@ -27,7 +27,7 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
-*~
+*~  
 
 # OS
 .DS_Store
@@ -35,3 +35,4 @@ Thumbs.db
 
 # Docker
 *.log
+

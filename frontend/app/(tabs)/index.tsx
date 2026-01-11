@@ -23,38 +23,200 @@ import Config from "../../config";
 
 const { height, width } = Dimensions.get("window");
 
-// Configuration pulled from environment variables
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+// Helper function to normalize URLs (remove trailing slashes)
+const normalizeUrl = (url: string): string => {
+  return url.replace(/\/+$/, ''); // Remove trailing slashes
+};
 
-// Function to fetch video list from backend API
-async function fetchVideosFromBackend(): Promise<string[]> {
+// Configuration pulled from environment variables
+const API_BASE_URL = normalizeUrl(process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000');
+// Video service URL - defaults to same host as backend but port 8002
+const getVideoServiceUrl = () => {
+  const baseUrl = normalizeUrl(process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000');
+  if (process.env.EXPO_PUBLIC_VIDEO_SERVICE_URL) {
+    return normalizeUrl(process.env.EXPO_PUBLIC_VIDEO_SERVICE_URL);
+  }
+  // Extract host from base URL and change port to 8002
   try {
-    const apiUrl = `${API_BASE_URL}/videos/list?limit=4`;
+    const url = new URL(baseUrl);
+    return `${url.protocol}//${url.hostname}:8002`;
+  } catch {
+    return 'http://localhost:8002';
+  }
+};
+const VIDEO_SERVICE_URL = getVideoServiceUrl();
+
+// Log configuration on startup
+console.log('🔧 API Configuration:');
+console.log('  API_BASE_URL:', API_BASE_URL);
+console.log('  VIDEO_SERVICE_URL:', VIDEO_SERVICE_URL);
+console.log('  EXPO_PUBLIC_API_BASE_URL:', process.env.EXPO_PUBLIC_API_BASE_URL || '(not set, using default)');
+
+// Hardcoded sample user ID for testing
+const SAMPLE_USER_ID = 'sample-user-123';
+
+// Function to fetch videos using semantic search
+async function fetchVideosFromSemanticSearch(resetIfEmpty: boolean = false): Promise<string[]> {
+  try {
+    // Step 1: Use semantic search to get greenhouse_ids (which are the same as video_ids)
+    const searchUrl = `${API_BASE_URL}/jobs/search`;
+    console.log("🌐 [NGROK/TUNNEL CHECK] Starting API request:");
+    console.log("  URL:", searchUrl);
+    console.log("  Method: POST");
+    console.log("  Timestamp:", new Date().toISOString());
     
-    console.log("Fetching 4 videos from backend API:", apiUrl);
+    const startTime = Date.now();
+    let searchResponse: Response;
     
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    try {
+      searchResponse = await fetch(searchUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          text_prompt: 'software engineer', // Generic search query for feed
+          user_id: SAMPLE_USER_ID,
+        }),
+      });
+      
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ [NGROK/TUNNEL CHECK] Request completed in ${elapsed}ms`);
+      console.log("  Status:", searchResponse.status, searchResponse.statusText);
+      console.log("  OK:", searchResponse.ok);
+      console.log("  URL resolved to:", searchResponse.url);
+      
+      // Check if URL changed (redirect)
+      if (searchResponse.url !== searchUrl) {
+        console.log("  ⚠️  URL was redirected from:", searchUrl, "to:", searchResponse.url);
+      }
+      
+    } catch (fetchError: any) {
+      const elapsed = Date.now() - startTime;
+      console.error(`❌ [NGROK/TUNNEL CHECK] Network error after ${elapsed}ms:`);
+      console.error("  Error type:", fetchError?.name || 'Unknown');
+      console.error("  Error message:", fetchError?.message || String(fetchError));
+      console.error("  This usually means:");
+      console.error("    - Backend is not running");
+      console.error("    - ngrok/tunnel is not connected");
+      console.error("    - Network connectivity issue");
+      console.error("    - URL is incorrect");
+      throw fetchError;
+    }
     
-    if (!response.ok) {
-      console.error("Failed to fetch videos from backend:", response.status);
+    if (!searchResponse.ok) {
+      console.error(`❌ [NGROK/TUNNEL CHECK] HTTP error ${searchResponse.status}:`);
+      console.error("  Status:", searchResponse.status, searchResponse.statusText);
+      console.error("  URL:", searchUrl);
+      
+      // Try to get error details
+      try {
+        const errorText = await searchResponse.text();
+        console.error("  Response body:", errorText.substring(0, 200));
+      } catch (e) {
+        console.error("  Could not read error response body");
+      }
+      
       return [];
     }
     
-    const data = await response.json();
-    const videos = data.videos || [];
+    const searchData = await searchResponse.json();
+    // Extract greenhouse_ids from response (these are the video_ids)
+    let videoIds: string[] = searchData.greenhouse_ids || [];
     
-    // Extract URLs from the response
-    const videoUrls = videos.map((video: any) => video.url);
+    // If no results and resetIfEmpty is true, reset user views and retry
+    if (videoIds.length === 0 && resetIfEmpty) {
+      console.log("No job IDs found, resetting user views and retrying...");
+      
+      // Reset user views
+      const resetUrl = `${API_BASE_URL}/jobs/reset-user-views?user_id=${SAMPLE_USER_ID}`;
+      const resetResponse = await fetch(resetUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (resetResponse.ok) {
+        const resetData = await resetResponse.json();
+        console.log(`Reset user views: ${resetData.deleted_count} records deleted`);
+        
+        // Retry semantic search after reset
+        const retryResponse = await fetch(searchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            text_prompt: 'software engineer',
+            user_id: SAMPLE_USER_ID,
+          }),
+        });
+        
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          videoIds = retryData.greenhouse_ids || [];
+          console.log(`After reset, found ${videoIds.length} video IDs`);
+        }
+      }
+    }
     
-    console.log(`Loaded ${videoUrls.length} videos from backend`);
-    return videoUrls;
-  } catch (error) {
-    console.error("Error fetching videos from backend:", error);
+    if (videoIds.length === 0) {
+      console.log("No job IDs found from search");
+      return [];
+    }
+    
+    console.log(`Found ${videoIds.length} video IDs (greenhouse_ids), fetching HLS URLs...`);
+    
+    // Step 2: For each video_id (greenhouse_id), call video service to get HLS playback URL
+    const videoUrls = await Promise.all(
+      videoIds.map(async (videoId: string) => {
+        try {
+          const videoUrl = `${VIDEO_SERVICE_URL}/video/${videoId}`;
+          console.log(`Fetching HLS URL for video ${videoId}`);
+          
+          const videoResponse = await fetch(videoUrl, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+          
+          if (!videoResponse.ok) {
+            console.error(`Failed to fetch HLS URL for video ${videoId}:`, videoResponse.status);
+            return null;
+          }
+          
+          const videoData = await videoResponse.json();
+          // Extract playback.url from response
+          const playbackUrl = videoData.playback?.url || videoData.url;
+          
+          if (!playbackUrl) {
+            console.warn(`No playback URL found for video ${videoId}`);
+            return null;
+          }
+          
+          return playbackUrl;
+        } catch (error) {
+          console.error(`Error fetching HLS URL for video ${videoId}:`, error);
+          return null;
+        }
+      })
+    );
+    
+    // Filter out null values (failed fetches)
+    const validUrls = videoUrls.filter((url): url is string => url !== null);
+    
+    console.log(`Loaded ${validUrls.length} HLS URLs`);
+    return validUrls;
+  } catch (error: any) {
+    console.error("❌ [NGROK/TUNNEL CHECK] Fatal error in fetchVideosFromSemanticSearch:");
+    console.error("  Error type:", error?.name || 'Unknown');
+    console.error("  Error message:", error?.message || String(error));
+    console.error("  Stack:", error?.stack || 'No stack trace');
+    console.error("  This suggests a network/connectivity issue with the backend");
     return [];
   }
 }
@@ -186,13 +348,39 @@ export default function HomeScreen() {
 
   const numOfRefreshes = useRef(0);
   const hasMore = useRef(true);
+  const prefetchedManifests = useRef<Set<string>>(new Set());
+
+  // Prefetch manifests for next 2 videos when visible index changes
+  useEffect(() => {
+    const prefetchManifests = async () => {
+      const nextIndices = [visibleIndex + 1, visibleIndex + 2];
+      for (const idx of nextIndices) {
+        if (idx < allVideos.length && allVideos[idx]) {
+          const manifestUrl = allVideos[idx];
+          if (!prefetchedManifests.current.has(manifestUrl)) {
+            try {
+              await fetch(manifestUrl);
+              prefetchedManifests.current.add(manifestUrl);
+              console.log(`Prefetched manifest for video ${idx}`);
+            } catch (error) {
+              console.warn(`Failed to prefetch manifest ${manifestUrl}:`, error);
+            }
+          }
+        }
+      }
+    };
+    
+    if (allVideos.length > 0) {
+      prefetchManifests();
+    }
+  }, [visibleIndex, allVideos]);
 
   // Load initial videos from backend
   useEffect(() => {
     async function loadInitialVideos() {
       try {
         setLoading(true);
-        const videos = await fetchVideosFromBackend();
+        const videos = await fetchVideosFromSemanticSearch(false);
         
         if (videos.length === 0) {
           setError("No videos found");
@@ -211,18 +399,20 @@ export default function HomeScreen() {
   }, []);
 
   const fetchMoreData = async () => {
-    // For pagination, you could fetch more videos from Vultr
-    // For now, we'll just prevent infinite loading
-    if (numOfRefreshes.current > 0) {
-      hasMore.current = false;
-      return;
+    // Fetch more videos using semantic search
+    // If search returns 0 results, reset user views and retry
+    try {
+      const moreVideos = await fetchVideosFromSemanticSearch(true);
+      
+      if (moreVideos.length > 0) {
+        setAllVideos((prevVideos) => [...prevVideos, ...moreVideos]);
+        console.log(`Added ${moreVideos.length} more videos. Total: ${allVideos.length + moreVideos.length}`);
+      } else {
+        console.log("No more videos available even after reset");
+      }
+    } catch (err) {
+      console.error("Error fetching more videos:", err);
     }
-    
-    numOfRefreshes.current += 1;
-    
-    // Optionally fetch more videos from Vultr
-    // const moreVideos = await fetchVideosFromVultr();
-    // setAllVideos([...allVideos, ...moreVideos]);
   };
 
   const onViewableItemsChanged = (event: any) => {
