@@ -255,7 +255,13 @@ def create_video_document(videos_collection, job: dict, upload_result: dict) -> 
         "generation_job_id": job["job_id"]
     }
     
-    videos_collection.insert_one(video_doc)
+    # Use replace_one with upsert to update existing or insert new
+    # This prevents duplicate documents for the same video_id
+    videos_collection.replace_one(
+        {"video_id": video_id},
+        video_doc,
+        upsert=True
+    )
     
     return str(video_id)
 
