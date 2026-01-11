@@ -358,6 +358,37 @@ export default function HomeScreen() {
   const [showOTPModal, setShowOTPModal] = useState(false);
   const [otpCode, setOtpCode] = useState<string | null>(null);
 
+  // Expose function to trigger OTP modal from console (for testing)
+  useEffect(() => {
+    const triggerOTP = () => {
+      console.log('🔔 Triggering OTP modal for testing...');
+      setShowOTPModal(true);
+    };
+    
+    // Expose to both global (React Native) and window (web debugger)
+    if (typeof global !== 'undefined') {
+      // @ts-ignore - Exposing test function globally
+      global.__testTriggerOTP = triggerOTP;
+    }
+    if (typeof window !== 'undefined') {
+      // @ts-ignore - Exposing test function for web debugger
+      window.__testTriggerOTP = triggerOTP;
+    }
+    
+    console.log('💡 Test function available: Run __testTriggerOTP() in console to test OTP modal');
+    
+    return () => {
+      if (typeof global !== 'undefined') {
+        // @ts-ignore
+        delete global.__testTriggerOTP;
+      }
+      if (typeof window !== 'undefined') {
+        // @ts-ignore
+        delete window.__testTriggerOTP;
+      }
+    };
+  }, []);
+
   const prefetchedManifests = useRef<Set<string>>(new Set());
 
   // ✅ If feed is disabled, NEVER prefetch anything
