@@ -145,7 +145,7 @@ CHARACTERS = {
         "name": "Peter Griffin",
         "voice_id": "a5c5987257a14018a90111ee52a4e71a",
         "role": "recruiter",
-        "caption_color": "#FF6347",  # Tomato
+        "caption_color": "#0A740C",  # Tomato
         "caption_style": "bold"
     },
     "brian": {
@@ -178,7 +178,7 @@ VIDEO_FPS = 24
 VIDEO_DURATION_TARGET = 30  # Target 5 minutes max
 
 # Caption Configuration
-CAPTION_FONT_SIZE = 70  # Reduced from 110 for smaller captions
+CAPTION_FONT_SIZE = 50  # Reduced from 110 for smaller captions
 CAPTION_FONT_FAMILY = "Nunito"
 CAPTION_FONT_WEIGHT = 900  # Black (400=normal, 700=bold, 900=black)
 CAPTION_POSITION = "center"  # Center horizontally, positioned above characters
@@ -189,7 +189,7 @@ CAPTION_STROKE_COLOR = "black"
 
 # Title Configuration
 TITLE_DURATION = 2.5  # Seconds to display title
-TITLE_FONT_SIZE = 200
+TITLE_FONT_SIZE = 150
 TITLE_FONT_FAMILY = "Nunito"
 TITLE_FONT_WEIGHT = 900  # Black (400=normal, 700=bold, 900=black)
 TITLE_COLOR = "white"
@@ -200,7 +200,7 @@ TITLE_FADE_DURATION = 0.5  # Seconds for fade in/out
 # Characters should be 1/3 of screen height (1920 / 3 = 640)
 CHARACTER_SIZE = (300, 300)  # Width, Height - 1/3 of screen height
 CHARACTER_BOTTOM_MARGIN = 50  # Pixels from bottom of screen
-CHARACTER_EDGE_MARGIN = 100  # Pixels from left/right edge of screen (increased for more side positioning)
+CHARACTER_EDGE_MARGIN = 20  # Pixels from left/right edge of screen (increased for more side positioning)
 CHARACTER_FADE_DURATION = 0.3  # Seconds for fade in/out when changing
 
 # Character Group Color Tints (for visual distinction)
