@@ -3,6 +3,7 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -11,8 +12,10 @@ from app.db import close_database, cleanup_stuck_analyzing, expire_stale_applica
 from app.fetching.scraper import run_scraper
 from app.routes.applications import router as applications_router
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from project root (2 levels up from this file)
+# services/headless/app/main.py -> services/headless -> services -> DeltaHacks12
+project_root = Path(__file__).parent.parent.parent.parent
+load_dotenv(project_root / ".env")
 
 # Load environment variables
 MONGODB_URI = os.getenv("MONGODB_URI", "")

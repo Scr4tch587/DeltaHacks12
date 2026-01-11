@@ -50,4 +50,4 @@ embedding_rate_limiter = AsyncRateLimiter(max_requests=50, time_window=10.0)
 ai_rate_limiter = AsyncRateLimiter(max_requests=10, time_window=1.0)
 
 # Browser semaphore: limit concurrent browser instances (each uses ~200-400MB RAM)
-BROWSER_SEMAPHORE = asyncio.Semaphore(3)
+BROWSER_SEMAPHORE = asyncio.Semaphore(10)

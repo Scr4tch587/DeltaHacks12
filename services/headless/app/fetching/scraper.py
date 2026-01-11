@@ -1,209 +1,227 @@
 """
-Main scraper orchestration logic.
+Main scraper orchestration logic - DEMO MODE.
 
-Orchestrates the full pipeline:
-1. Load companies from companies.json
-2. Fetch jobs from Greenhouse API
-3. Generate Gemini embeddings
-4. Store in MongoDB Atlas
+Orchestrates the full pipeline for demo:
+1. Hardcode 17 verified demo job URLs
+2. Open each page in headless browser
+3. Extract visible description and pre-analyze form
+4. Generate Gemini embeddings
+5. Store in MongoDB with form_schema
 """
 
 import asyncio
 import json
 import os
+import random
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 
-from app.db import ensure_indexes, get_job_count, upsert_job, mark_missing_jobs_as_expired
+from app.db import ensure_indexes, get_job_count, upsert_job, get_database
 from app.rate_limiter import embedding_rate_limiter
 from .embeddings import configure_gemini, create_job_embedding_text, generate_embedding
-from .greenhouse import fetch_all_job_details, fetch_jobs_for_company
+
+# Hardcoded demo job URLs
+DEMO_JOB_URLS = [
+    "https://job-boards.greenhouse.io/tlatechinc/jobs/4074977009?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/roo/jobs/5047408008?gh_src=my.greenhouse.search",
+    "https://job-boards.eu.greenhouse.io/lotusworks/jobs/4746237101?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/redwoodmaterials/jobs/5737879004?gh_jid=5737879004&gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/willowtree/jobs/8364172002?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/grvty/jobs/4091559009?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/sirenopt/jobs/4090525009?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/upwork/jobs/7565868003?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/cartesiansystems/jobs/4076723009?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/dynetherapeutics/jobs/5748627004?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/komodohealth/jobs/8363298002?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/checkr/jobs/7342475?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/phizenix/jobs/5058878008?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/atomicmachines/jobs/4093522009?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/lexingtonmedical/jobs/5057076008?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/formativgroup/jobs/4093476009?gh_src=my.greenhouse.search",
+    "https://job-boards.greenhouse.io/atomicmachines/jobs/4092512009?gh_src=my.greenhouse.search",
+]
 
 
-def load_companies() -> list[dict[str, Any]]:
-    """Load companies from the data/companies.json file."""
-    # Get the path relative to this file
-    current_dir = Path(__file__).parent
-    companies_path = current_dir.parent.parent / "data" / "companies.json"
-
-    if not companies_path.exists():
-        print(f"Companies file not found: {companies_path}")
-        return []
-
-    with open(companies_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def html_to_text(html: str | None) -> str:
-    """Convert HTML to plain text using BeautifulSoup."""
-    if not html:
-        return ""
-    soup = BeautifulSoup(html, "html.parser")
-    return soup.get_text(separator=" ", strip=True)
-
-
-def extract_location(job: dict[str, Any]) -> str | None:
-    """Extract location name from job details."""
-    location = job.get("location")
-    if isinstance(location, dict):
-        return location.get("name")
-    return location if isinstance(location, str) else None
-
-
-def extract_department(job: dict[str, Any]) -> str | None:
-    """Extract department name from job details."""
-    departments = job.get("departments", [])
-    if departments and isinstance(departments, list):
-        first_dept = departments[0]
-        if isinstance(first_dept, dict):
-            return first_dept.get("name")
+def parse_greenhouse_url(url: str) -> tuple[str, int, str] | None:
+    """
+    Parse a Greenhouse job URL to extract company token and job ID.
+    
+    Args:
+        url: Full Greenhouse job URL
+        
+    Returns:
+        Tuple of (company_token, greenhouse_id, company_name) or None if invalid
+    """
+    # Pattern: https://job-boards.greenhouse.io/{company}/jobs/{job_id}
+    pattern = r'https://job-boards(?:\.eu)?\.greenhouse\.io/([^/]+)/jobs/(\d+)'
+    match = re.search(pattern, url)
+    
+    if match:
+        company_token = match.group(1)
+        greenhouse_id = int(match.group(2))
+        # Use token as name for now (can be improved)
+        company_name = company_token.replace("-", " ").title()
+        return (company_token, greenhouse_id, company_name)
+    
     return None
 
 
-def transform_job_to_document(
-    job: dict[str, Any],
-    company_token: str,
-    company_name: str,
-) -> dict[str, Any]:
+async def extract_job_details_from_page(url: str, browser) -> dict[str, Any] | None:
     """
-    Transform a Greenhouse job response into our MongoDB document format.
-
-    Args:
-        job: Raw job details from Greenhouse API
-        company_token: Company's Greenhouse board token
-        company_name: Display name of the company
-
-    Returns:
-        Job document ready for MongoDB (without embedding)
+    Open the job page in headless browser and extract details.
+    
+    Returns dict with:
+        - title
+        - description_text (visible page content)
+        - form_schema (pre-analyzed form fields)
     """
-    description_html = job.get("content", "")
-    description_text = html_to_text(description_html)
-
-    # Parse updated_at timestamp
-    updated_at_str = job.get("updated_at")
-    updated_at = None
-    if updated_at_str:
+    try:
+        from app.applying.greenhouse import GreenhouseApplier, compute_form_fingerprint
+        
+        page = await browser.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(2000)  # Let dynamic content load
+        
+        # Extract title
+        title = ""
         try:
-            # Greenhouse uses ISO format: "2024-01-15T10:30:00-05:00"
-            updated_at = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            updated_at = datetime.utcnow()
+            title_elem = await page.query_selector("h1.app-title, .job-title, h1")
+            if title_elem:
+                title = await title_elem.inner_text()
+        except:
+            pass
+        
+        # Extract visible description text
+        description_text = ""
+        try:
+            # Try to find the job description container
+            desc_selectors = [
+                "#content",
+                ".content",
+                "#job-content",
+                ".job-description",
+                "[data-qa='job-description']"
+            ]
+            
+            for selector in desc_selectors:
+                elem = await page.query_selector(selector)
+                if elem:
+                    description_text = await elem.inner_text()
+                    if description_text and len(description_text) > 100:
+                        break
+            
+            # Fallback: get all visible text
+            if not description_text or len(description_text) < 100:
+                description_text = await page.inner_text("body")
+        except Exception as e:
+            print(f"   Warning: Could not extract description: {e}")
+        
+        # Pre-analyze form fields using GreenhouseApplier
+        applier = GreenhouseApplier(headless=True)
+        form_fields = await applier._extract_form_fields(page)
+        
+        # Compute fingerprint
+        fingerprint = compute_form_fingerprint(form_fields)
+        
+        form_schema = {
+            "fields": form_fields,
+            "fingerprint": fingerprint,
+            "analyzed_at": datetime.utcnow()
+        }
+        
+        await page.close()
+        
+        return {
+            "title": title.strip(),
+            "description_text": description_text.strip(),
+            "form_schema": form_schema
+        }
+        
+    except Exception as e:
+        print(f"   Error extracting from page: {e}")
+        return None
 
-    return {
-        "greenhouse_id": job.get("id"),
+
+async def scrape_demo_job(url: str, browser) -> bool:
+    """
+    Scrape a single demo job URL.
+    
+    Returns:
+        True if successfully scraped and stored
+    """
+    parsed = parse_greenhouse_url(url)
+    if not parsed:
+        print(f"   ✗ Invalid URL format: {url}")
+        return False
+    
+    company_token, greenhouse_id, company_name = parsed
+    print(f"[{company_name}] Processing job {greenhouse_id}...")
+    
+    # Check if job already has complete data
+    db = await get_database()
+    existing = await db.jobs.find_one({"greenhouse_id": greenhouse_id})
+    
+    if existing and existing.get("form_schema") and existing.get("embedding"):
+        print(f"   ✓ Already complete, skipping")
+        return True
+    
+    # Extract details from page
+    print(f"   Opening page in headless browser...")
+    page_data = await extract_job_details_from_page(url, browser)
+    
+    if not page_data:
+        print(f"   ✗ Failed to extract page data")
+        return False
+    
+    # Build job document
+    doc = {
+        "greenhouse_id": greenhouse_id,
         "company_token": company_token,
         "company_name": company_name,
-        "title": job.get("title", ""),
-        "location": extract_location(job),
-        "department": extract_department(job),
-        "description_html": description_html,
-        "description_text": description_text,
-        "absolute_url": job.get("absolute_url", ""),
-        "updated_at": updated_at or datetime.utcnow(),
+        "title": page_data["title"],
+        "location": None,  # Could be extracted if needed
+        "department": None,
+        "description_text": page_data["description_text"],
+        "absolute_url": url,
+        "updated_at": datetime.utcnow(),
         "active": True,
+        "form_schema": page_data["form_schema"]
     }
-
-
-async def scrape_company(
-    client: httpx.AsyncClient,
-    company: dict[str, Any],
-) -> int:
-    """
-    Scrape jobs for a single company.
-
-    Args:
-        client: httpx async client
-        company: Company dict with 'token' and 'name' fields
-
-    Returns:
-        Number of jobs successfully scraped and stored
-    """
-    token = company.get("token", "")
-    name = company.get("name", token)
-
-    if not token:
-        return 0
-
-    print(f"[{name}] Starting scrape...")
-
-    # Fetch job summaries
-    print(f"[{name}] Fetching job list from API...")
-    job_summaries = await fetch_jobs_for_company(client, token)
-    if not job_summaries:
-        print(f"[{name}] No jobs found")
-        # Even if no jobs found, we should mark all existing jobs for this company as expired
-        expired_count = await mark_missing_jobs_as_expired(token, [])
-        if expired_count > 0:
-            print(f"[{name}] Marked {expired_count} old jobs as expired")
-        return 0
-
-    print(f"[{name}] Found {len(job_summaries)} jobs, fetching full details...")
-
-    # Fetch full details
-    job_details = await fetch_all_job_details(client, token, job_summaries)
-    print(f"[{name}] Retrieved {len(job_details)} job details")
-
-    # Transform and store each job concurrently
-    print(f"[{name}] Processing {len(job_details)} jobs concurrently...")
     
-    async def process_job(idx: int, job: dict[str, Any]) -> bool:
-        job_title = job.get("title", "Unknown")
-        # print(f"[{name}] ({idx}/{len(job_details)}) Processing: {job_title}")
-        
-        # Transform to document format
-        doc = transform_job_to_document(job, token, name)
-
-        # Generate embedding
-        # print(f"[{name}] ({idx}/{len(job_details)}) Generating embedding...")
-        embedding_text = create_job_embedding_text(doc)
-        
-        # Rate limit for embeddings
-        await embedding_rate_limiter.acquire()
-        doc["embedding"] = await generate_embedding(embedding_text)
-
-        # Store in MongoDB
-        # print(f"[{name}] ({idx}/{len(job_details)}) Storing in database...")
-        success = await upsert_job(doc)
-        if success:
-            print(f"[{name}] ({idx}/{len(job_details)}) ✓ Processed & Stored: {job_title}")
-        else:
-            print(f"[{name}] ({idx}/{len(job_details)}) ✗ Failed to store: {job_title}")
-        return success
-
-    # Create tasks for all jobs
-    tasks = [
-        process_job(idx, job) 
-        for idx, job in enumerate(job_details, 1)
-    ]
+    # Generate embedding from visible description
+    print(f"   Generating embedding...")
+    embedding_text = create_job_embedding_text(doc)
     
-    # Run all tasks concurrently
-    results = await asyncio.gather(*tasks)
+    await embedding_rate_limiter.acquire()
+    doc["embedding"] = await generate_embedding(embedding_text)
     
-    stored_count = sum(1 for r in results if r)
-    print(f"[{name}] Complete! Stored {stored_count}/{len(job_details)} jobs")
-
-    # Clean up expired jobs
-    active_ids = [job.get("id") for job in job_details if job.get("id")]
-    expired_count = await mark_missing_jobs_as_expired(token, active_ids)
-    if expired_count > 0:
-        print(f"[{name}] Clean up: Marked {expired_count} old jobs as expired")
-
-    return stored_count
+    # Store in MongoDB
+    print(f"   Storing in database...")
+    success = await upsert_job(doc)
+    
+    if success:
+        print(f"   ✓ Stored: {page_data['title']}")
+    else:
+        print(f"   ✗ Failed to store")
+    
+    return success
 
 
 async def run_scraper() -> dict[str, Any]:
     """
-    Run the full scraping pipeline.
-
+    Run the demo scraping pipeline.
+    
     Returns:
-        Summary dict with companies_scraped, jobs_stored, total_jobs
+        Summary dict with jobs_stored, total_jobs
     """
     print("=" * 60)
-    print("Starting Greenhouse Job Scraper")
+    print("Starting DEMO Job Scraper")
     print("=" * 60)
 
     # Configure Gemini API
@@ -224,37 +242,41 @@ async def run_scraper() -> dict[str, Any]:
         print(f"✗ Failed to setup MongoDB: {e}")
         return {"error": str(e)}
 
-    # Load companies
-    print("Loading companies from JSON...")
-    companies = load_companies()
-    if not companies:
-        print("✗ No companies to scrape")
-        return {"error": "No companies found in companies.json"}
-
-    print(f"✓ Loaded {len(companies)} companies")
+    print(f"✓ Loaded {len(DEMO_JOB_URLS)} demo URLs")
     print()
 
-    # Scrape all companies
-    total_jobs = 0
-    companies_scraped = 0
+    # Start browser
+    jobs_stored = 0
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True)
+        
+        # Concurrency control for scraping
+        # User requested 10 concurrent tabs (Vultr server has 24GB RAM)
+        sem = asyncio.Semaphore(10)
+        tasks = []
 
-    async with httpx.AsyncClient() as client:
-        for idx, company in enumerate(companies, 1):
-            company_name = company.get('name', 'unknown')
-            print(f"\n--- Company {idx}/{len(companies)}: {company_name} ---")
-            try:
-                jobs_stored = await scrape_company(client, company)
-                total_jobs += jobs_stored
-                if jobs_stored > 0:
-                    companies_scraped += 1
-            except Exception as e:
-                print(f"✗ Error scraping {company_name}: {e}")
-                import traceback
-                traceback.print_exc()
+        async def scrape_worker(idx, url):
+            async with sem:
+                # Add a small random delay to prevent thundering herd on browser launch
+                await asyncio.sleep(random.uniform(0.1, 1.0))
+                print(f"--- Starting Job {idx}/{len(DEMO_JOB_URLS)} ---")
+                try:
+                    success = await scrape_demo_job(url, browser)
+                    return 1 if success else 0
+                except Exception as e:
+                    print(f"✗ Error scraping {url}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return 0
 
-            # Small delay between companies to be nice to the API
-            print(f"Waiting 0.5s before next company...")
-            await asyncio.sleep(0.5)
+        print(f"Launching {len(DEMO_JOB_URLS)} jobs with concurrency=10...")
+        for idx, url in enumerate(DEMO_JOB_URLS, 1):
+            tasks.append(asyncio.create_task(scrape_worker(idx, url)))
+        
+        results = await asyncio.gather(*tasks)
+        jobs_stored = sum(results)
+        
+        await browser.close()
 
     # Get final count from database
     print("\nFetching final job count from database...")
@@ -263,16 +285,13 @@ async def run_scraper() -> dict[str, Any]:
     print("\n" + "=" * 60)
     print("SCRAPING COMPLETE!")
     print("=" * 60)
-    print(f"  Companies processed: {idx}/{len(companies)}")
-    print(f"  Companies with jobs: {companies_scraped}")
-    print(f"  Jobs stored this run: {total_jobs}")
+    print(f"  Jobs processed: {len(DEMO_JOB_URLS)}")
+    print(f"  Jobs stored this run: {jobs_stored}")
     print(f"  Total jobs in database: {final_count}")
     print("=" * 60)
 
     return {
-        "companies_scraped": companies_scraped,
-        "companies_total": len(companies),
-        "jobs_stored": total_jobs,
+        "jobs_stored": jobs_stored,
         "total_jobs_in_db": final_count,
     }
 
