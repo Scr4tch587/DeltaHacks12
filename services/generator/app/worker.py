@@ -290,7 +290,8 @@ def process_job(job: dict, db, s3_client) -> bool:
         if not job_doc:
             raise Exception(f"Job {greenhouse_id} not found in database")
         
-        job_description = job_doc.get("description", "")
+        # Try both field names - some jobs use 'description', others use 'description_text'
+        job_description = job_doc.get("description_text") or job_doc.get("description", "")
         if not job_description or len(job_description) < 50:
             raise Exception(f"Job description too short ({len(job_description)} chars)")
         
