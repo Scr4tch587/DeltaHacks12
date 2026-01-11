@@ -22,6 +22,7 @@ export default function LoginScreen() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [resumeFile, setResumeFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
   const { login, register } = useAuth();
@@ -73,8 +74,8 @@ export default function LoginScreen() {
       if (isLogin) {
         await login(email.trim(), password);
       } else {
-        // Resume file is ignored - only email and password are sent
-        await register(email.trim(), password);
+        // Resume file is ignored - only email, password, and prompt are sent
+        await register(email.trim(), password, prompt.trim() || undefined);
       }
       router.replace('/(tabs)');
     } catch (error: any) {
@@ -156,6 +157,28 @@ export default function LoginScreen() {
                   </Text>
                 </Pressable>
               )}
+            </View>
+          )}
+
+          {/* Job prompt input - only shown when creating account */}
+          {!isLogin && (
+            <View style={styles.promptContainer}>
+              <Text style={[styles.promptLabel, { color: textColor }]}>
+                What job are you looking for?
+              </Text>
+              <View style={[styles.inputContainer, { borderColor }]}>
+                <TextInput
+                  style={[styles.input, { color: textColor }]}
+                  placeholder="Enter your job search..."
+                  placeholderTextColor={borderColor}
+                  value={prompt}
+                  onChangeText={setPrompt}
+                  autoCapitalize="sentences"
+                  editable={!isLoading}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
             </View>
           )}
 
@@ -282,5 +305,13 @@ const styles = StyleSheet.create({
   resumeFileName: {
     fontSize: 16,
     flex: 1,
+  },
+  promptContainer: {
+    marginBottom: 16,
+  },
+  promptLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
   },
 });

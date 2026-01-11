@@ -56,6 +56,7 @@ s3_client = None
 class UserRegister(BaseModel):
     email: EmailStr
     password: str
+    prompt: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -505,6 +506,10 @@ async def register(user_data: UserRegister):
         "hashed_password": hashed_password,
         "created_at": None  # Will be set by MongoDB if using timestamps
     }
+    
+    # Add prompt if provided
+    if user_data.prompt is not None:
+        user_doc["prompt"] = user_data.prompt
     
     try:
         result = await users_collection.insert_one(user_doc)
