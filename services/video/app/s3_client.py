@@ -16,6 +16,29 @@ VULTR_BUCKET = os.getenv("VULTR_BUCKET", "")
 S3_ADDRESSING_STYLE = os.getenv("S3_ADDRESSING_STYLE", "path").lower()  # path or virtual
 PRESIGN_EXPIRES_SECONDS = int(os.getenv("PRESIGN_EXPIRES_SECONDS", os.getenv("PRESIGNED_URL_EXPIRY", "3600")))  # Default 1 hour
 
+# S3 key prefix - files are stored under bucket-name/hls/ in this setup
+# If your files are at root level (just hls/), set this to empty string
+S3_KEY_PREFIX = os.getenv("S3_KEY_PREFIX", VULTR_BUCKET)  # Default to bucket name as prefix
+
+
+def get_s3_key(relative_key: str) -> str:
+    """
+    Construct the full S3 key with the configured prefix.
+    
+    Args:
+        relative_key: Relative key path (e.g., "hls/abc123/master.m3u8")
+    
+    Returns:
+        Full S3 key with prefix (e.g., "deltahacks-storage-real/hls/abc123/master.m3u8")
+    """
+    if S3_KEY_PREFIX:
+        # Remove leading slash from prefix if present
+        prefix = S3_KEY_PREFIX.rstrip('/')
+        # Remove leading slash from key if present
+        key = relative_key.lstrip('/')
+        return f"{prefix}/{key}"
+    return relative_key.lstrip('/')
+
 _s3_client: Optional[boto3.client] = None
 
 
@@ -59,7 +82,7 @@ def get_presigned_url(key: str, expires_in: int = PRESIGN_EXPIRES_SECONDS) -> st
     Generate a presigned URL for an S3 object.
     
     Args:
-        key: S3 object key
+        key: S3 object key (relative key, will be prefixed automatically)
         expires_in: Expiration time in seconds
     
     Returns:
@@ -67,12 +90,15 @@ def get_presigned_url(key: str, expires_in: int = PRESIGN_EXPIRES_SECONDS) -> st
     """
     client = get_s3_client()
     
+    # Construct full S3 key with prefix
+    full_key = get_s3_key(key)
+    
     try:
         url = client.generate_presigned_url(
             'get_object',
             Params={
                 'Bucket': VULTR_BUCKET,
-                'Key': key
+                'Key': full_key
             },
             ExpiresIn=expires_in
         )
@@ -86,7 +112,7 @@ def fetch_object(key: str) -> bytes:
     Fetch an object from S3.
     
     Args:
-        key: S3 object key
+        key: S3 object key (relative key, will be prefixed automatically)
     
     Returns:
         Object content as bytes
@@ -96,8 +122,11 @@ def fetch_object(key: str) -> bytes:
     """
     client = get_s3_client()
     
+    # Construct full S3 key with prefix
+    full_key = get_s3_key(key)
+    
     try:
-        response = client.get_object(Bucket=VULTR_BUCKET, Key=key)
+        response = client.get_object(Bucket=VULTR_BUCKET, Key=full_key)
         return response['Body'].read()
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', '')

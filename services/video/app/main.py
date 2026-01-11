@@ -418,13 +418,18 @@ async def debug_presign(key: str = Query(...), api_key: str = Depends(verify_api
         # Extract host from URL for debugging
         parsed = urlparse(presigned_url)
         
+        from app.s3_client import get_s3_key, S3_KEY_PREFIX
+        resolved_key = get_s3_key(key)
+        
         return {
-            "resolved_key": key,
+            "input_key": key,
+            "resolved_key": resolved_key,
             "presigned_url": presigned_url,
             "host": parsed.netloc,
             "expires_in_seconds": PRESIGN_EXPIRES_SECONDS,
             "addressing_style": S3_ADDRESSING_STYLE,
             "bucket": VULTR_BUCKET,
+            "key_prefix": S3_KEY_PREFIX,
         }
     
     except Exception as e:
