@@ -1,4 +1,8 @@
 import os
+import hashlib
+import uuid
+import random
+from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,15 +45,57 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 EMBEDDING_MODEL = "text-embedding-004"
 EMBEDDING_DIMENSION = 768
 
+# On-demand generation configuration
+SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
+TARGET_COUNT = int(os.getenv("TARGET_COUNT", "5"))
+MAX_GENERATE_PER_REQUEST = int(os.getenv("MAX_GENERATE_PER_REQUEST", "5"))
+MAX_USER_CONCURRENT_JOBS = int(os.getenv("MAX_USER_CONCURRENT_JOBS", "2"))
+VECTOR_SEARCH_LIMIT = int(os.getenv("VECTOR_SEARCH_LIMIT", "20"))
+VECTOR_SEARCH_CANDIDATES = int(os.getenv("VECTOR_SEARCH_CANDIDATES", "50"))
+
+# Available video templates for random selection
+VIDEO_TEMPLATES = [
+    "family_guy",
+    "spongebob",
+    "political",
+]
+
 # MongoDB client (will be initialized on startup)
 client = None
 db = None
 users_collection = None
 user_job_views_collection = None
 jobs_collection = None
+videos_collection = None
+generation_jobs_collection = None
 
 # S3 client for Vultr Object Storage
 s3_client = None
+
+
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+def compute_query_fingerprint(query: str) -> str:
+    """
+    Normalize and hash query for deduplication.
+    
+    Steps:
+    1. Lowercase
+    2. Strip whitespace
+    3. Remove punctuation
+    4. Sort words (order-independent matching)
+    5. SHA256 hash, truncate to 16 chars
+    """
+    normalized = query.lower().strip()
+    # Remove punctuation, keep only alphanumeric and spaces
+    normalized = ''.join(c for c in normalized if c.isalnum() or c.isspace())
+    # Sort words for order-independence
+    words = sorted(normalized.split())
+    canonical = ' '.join(words)
+    # Hash and truncate
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
 # Pydantic models for request/response
@@ -96,12 +142,15 @@ class SearchJobsResponse(BaseModel):
     user_id: str
     greenhouse_ids: List[str]
     count: int
+    generation_triggered: bool = False
+    generation_job_ids: List[str] = []
 
 
 @app.on_event("startup")
 async def startup_db_client():
     """Initialize MongoDB connection, S3 client, and Gemini API on startup"""
     global client, db, s3_client, users_collection, user_job_views_collection, jobs_collection
+    global videos_collection, generation_jobs_collection
     
     # Initialize MongoDB
     if MONGODB_URI:
@@ -159,6 +208,63 @@ async def startup_db_client():
             # Initialize jobs collection
             jobs_collection = db.jobs
             print("✓ jobs collection initialized")
+            
+            # Initialize videos collection with indexes
+            videos_collection = db.videos
+            try:
+                # Index on greenhouse_id for fast lookup of videos by job
+                await videos_collection.create_index(
+                    [("greenhouse_id", 1)],
+                    name="greenhouse_id_idx"
+                )
+                # Unique index on video_id
+                await videos_collection.create_index(
+                    [("video_id", 1)],
+                    unique=True,
+                    name="video_id_unique_idx"
+                )
+                # Index for status queries
+                await videos_collection.create_index(
+                    [("status", 1), ("created_at", -1)],
+                    name="status_created_idx"
+                )
+                print("✓ videos collection initialized with indexes")
+            except OperationFailure as e:
+                if "Index already exists" in str(e) or "IndexOptionsConflict" in str(e):
+                    print("✓ videos collection indexes already exist")
+                else:
+                    raise
+            
+            # Initialize generation_jobs collection with indexes
+            generation_jobs_collection = db.generation_jobs
+            try:
+                # Index for worker polling (find queued jobs)
+                await generation_jobs_collection.create_index(
+                    [("status", 1), ("created_at", 1)],
+                    name="status_created_idx"
+                )
+                # Index for deduplication
+                await generation_jobs_collection.create_index(
+                    [("query_fingerprint", 1), ("greenhouse_id", 1)],
+                    name="fingerprint_greenhouse_idx"
+                )
+                # Index for per-user concurrency check
+                await generation_jobs_collection.create_index(
+                    [("user_id", 1), ("status", 1)],
+                    name="user_status_idx"
+                )
+                # TTL index - auto-delete jobs after 24 hours
+                await generation_jobs_collection.create_index(
+                    [("created_at", 1)],
+                    expireAfterSeconds=86400,  # 24 hours
+                    name="ttl_idx"
+                )
+                print("✓ generation_jobs collection initialized with indexes")
+            except OperationFailure as e:
+                if "Index already exists" in str(e) or "IndexOptionsConflict" in str(e):
+                    print("✓ generation_jobs collection indexes already exist")
+                else:
+                    raise
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
             print(f"✗ MongoDB connection failed: {e}")
             client = None
@@ -734,36 +840,104 @@ async def reset_user_job_views(user_id: str = Query(...)):
 
 
 # ============================================================================
-# Semantic Job Search - Vector search with unseen jobs filtering
+# Semantic Job Search - Vector search with on-demand video generation
 # ============================================================================
+
+async def enqueue_generation_job(
+    greenhouse_id: str,
+    query_fingerprint: str,
+    user_id: str,
+    template_id: str
+) -> Optional[str]:
+    """
+    Enqueue a video generation job for a job that doesn't have a video.
+    
+    Returns the job_id if enqueued, None if skipped (already exists or at limit).
+    """
+    if generation_jobs_collection is None:
+        return None
+    
+    # Check for existing job with same fingerprint + greenhouse_id
+    existing = await generation_jobs_collection.find_one({
+        "query_fingerprint": query_fingerprint,
+        "greenhouse_id": greenhouse_id,
+        "status": {"$nin": ["failed"]}  # Allow retry if previously failed
+    })
+    if existing:
+        print(f"  Skipping generation for {greenhouse_id} - job already exists")
+        return None
+    
+    # Check user's concurrent job limit
+    active_count = await generation_jobs_collection.count_documents({
+        "user_id": user_id,
+        "status": {"$in": ["queued", "running"]}
+    })
+    if active_count >= MAX_USER_CONCURRENT_JOBS:
+        print(f"  Skipping generation for {greenhouse_id} - user at concurrent limit ({active_count}/{MAX_USER_CONCURRENT_JOBS})")
+        return None
+    
+    # Generate job ID and output video ID
+    job_id = str(uuid.uuid4())
+    output_video_id = str(uuid.uuid4())
+    
+    # Create generation job document
+    job_doc = {
+        "job_id": job_id,
+        "greenhouse_id": greenhouse_id,
+        "template_id": template_id,
+        "query_fingerprint": query_fingerprint,
+        "user_id": user_id,
+        "status": "queued",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "started_at": None,
+        "completed_at": None,
+        "output_video_id": output_video_id,
+        "error": None,
+        "retry_count": 0,
+        "worker_id": None
+    }
+    
+    try:
+        await generation_jobs_collection.insert_one(job_doc)
+        print(f"  Enqueued generation job {job_id} for greenhouse_id={greenhouse_id}, template={template_id}")
+        return job_id
+    except DuplicateKeyError:
+        print(f"  Skipping generation for {greenhouse_id} - duplicate key")
+        return None
+
 
 @app.post("/jobs/search", response_model=SearchJobsResponse)
 async def search_jobs(request: SearchJobsRequest):
     """
-    Search for jobs using semantic similarity.
+    Search for jobs using semantic similarity with on-demand video generation.
     
-    Takes a text prompt and user_id, returns the 5 most relevant jobs the user hasn't seen yet.
-    Uses MongoDB vector search with Gemini embeddings.
-    Automatically marks the returned jobs as seen.
+    Takes a text prompt and user_id, returns the most relevant jobs that have videos.
+    If insufficient videos are available above the similarity threshold, triggers
+    on-demand video generation for high-matching jobs that lack videos.
     
     Args:
         text_prompt: Natural language search query (e.g., "Python developer remote")
         user_id: User ID to filter out already-seen jobs
     
     Returns:
-        List of 5 most relevant greenhouse_ids (marked as seen)
+        - greenhouse_ids: List of job IDs that have videos (only playable content)
+        - generation_triggered: True if new videos are being generated
+        - generation_job_ids: IDs of enqueued generation jobs
     """
-    if jobs_collection is None or user_job_views_collection is None:
+    if jobs_collection is None or user_job_views_collection is None or videos_collection is None:
         raise HTTPException(status_code=503, detail="MongoDB not connected")
     
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
     
     try:
+        # Compute query fingerprint for deduplication
+        query_fingerprint = compute_query_fingerprint(request.text_prompt)
+        print(f"Search: user={request.user_id}, query_fingerprint={query_fingerprint}")
+        
         # Step 1: Generate embedding for the text prompt
         try:
-            # Use the google-generativeai SDK to generate embeddings
-            # Note: For text-embedding-004, the model name should include "models/" prefix
             model_name = f"models/{EMBEDDING_MODEL}" if not EMBEDDING_MODEL.startswith("models/") else EMBEDDING_MODEL
             
             embedding_result = genai.embed_content(
@@ -773,18 +947,14 @@ async def search_jobs(request: SearchJobsRequest):
                 output_dimensionality=EMBEDDING_DIMENSION
             )
             
-            # Extract embedding - the result structure may vary by SDK version
-            # Common formats: dict with 'embedding' key, or object with .embedding attribute
             if isinstance(embedding_result, dict):
                 query_vector = embedding_result.get('embedding', embedding_result.get('values', None))
             else:
                 query_vector = getattr(embedding_result, 'embedding', getattr(embedding_result, 'values', None))
             
             if query_vector is None:
-                # Fallback: if result is directly a list
                 query_vector = embedding_result if isinstance(embedding_result, list) else list(embedding_result)
             
-            # Convert to list if needed and validate
             query_vector = list(query_vector)
             if len(query_vector) != EMBEDDING_DIMENSION:
                 raise ValueError(f"Embedding dimension mismatch: expected {EMBEDDING_DIMENSION}, got {len(query_vector)}")
@@ -798,31 +968,21 @@ async def search_jobs(request: SearchJobsRequest):
         )
         seen_greenhouse_ids = []
         async for doc in seen_cursor:
-            seen_greenhouse_ids.append(str(doc["greenhouse_id"]))  # Ensure string format
+            seen_greenhouse_ids.append(str(doc["greenhouse_id"]))
         
-        # Quick check: verify jobs exist in database
-        jobs_count = await jobs_collection.count_documents({"active": True})
-        if jobs_count == 0:
-            raise HTTPException(
-                status_code=404,
-                detail="No active jobs found in database"
-            )
-        
-        # Step 3: Build vector search pipeline
-        # Filter: active=true AND greenhouse_id NOT IN seen_greenhouse_ids
+        # Step 3: Vector search for top K jobs (more than TARGET_COUNT to allow filtering)
         vector_search_filter = {"active": True}
         if seen_greenhouse_ids:
             vector_search_filter["greenhouse_id"] = {"$nin": seen_greenhouse_ids}
         
-        # MongoDB vector search aggregation pipeline
         pipeline = [
             {
                 "$vectorSearch": {
                     "index": "jobs_semantic_search",
                     "path": "embedding",
                     "queryVector": query_vector,
-                    "numCandidates": 50,  # Search more candidates to ensure we get 5 after filtering
-                    "limit": 5,
+                    "numCandidates": VECTOR_SEARCH_CANDIDATES,
+                    "limit": VECTOR_SEARCH_LIMIT,
                     "filter": vector_search_filter
                 }
             },
@@ -835,71 +995,345 @@ async def search_jobs(request: SearchJobsRequest):
                 "$project": {
                     "greenhouse_id": 1,
                     "score": 1,
+                    "description": 1,  # Keep for potential generation
                     "_id": 0
                 }
-            },
-            {
-                "$limit": 5
             }
         ]
         
-        # Step 4: Execute vector search
-        results = []
-        vector_search_worked = False
+        # Execute vector search
+        job_results = []
         try:
             async for doc in jobs_collection.aggregate(pipeline):
                 if doc.get("greenhouse_id"):
-                    results.append(str(doc["greenhouse_id"]))  # Ensure string format
-                    vector_search_worked = True
+                    job_results.append({
+                        "greenhouse_id": str(doc["greenhouse_id"]),
+                        "score": doc.get("score", 0),
+                        "description": doc.get("description", "")
+                    })
+            print(f"  Vector search returned {len(job_results)} jobs")
         except Exception as agg_error:
-            # If vector search fails (e.g., index doesn't exist), try a simpler approach
             error_msg = str(agg_error)
-            print(f"Vector search failed: {error_msg}. Attempting fallback query...")
+            print(f"  Vector search failed: {error_msg}. Using fallback...")
             
-            # Check if it's an index error
-            if "index" in error_msg.lower() or "vector" in error_msg.lower():
-                # Fallback to non-vector search
-                vector_search_worked = False
-        
-        # Fallback: If vector search returned 0 results but jobs exist, use regular query
-        # This handles the case where the vector search index doesn't exist yet
-        if not results and jobs_count > 0:
-            print("Vector search returned 0 results. Using fallback non-vector query...")
+            # Fallback to non-vector search
             fallback_filter = {"active": True}
             if seen_greenhouse_ids:
                 fallback_filter["greenhouse_id"] = {"$nin": seen_greenhouse_ids}
             
-            # Just get first 5 jobs matching criteria (without vector search)
-            cursor = jobs_collection.find(fallback_filter, {"greenhouse_id": 1, "_id": 0}).limit(5)
+            cursor = jobs_collection.find(
+                fallback_filter,
+                {"greenhouse_id": 1, "description": 1, "_id": 0}
+            ).limit(VECTOR_SEARCH_LIMIT)
+            
             async for doc in cursor:
                 if doc.get("greenhouse_id"):
-                    results.append(str(doc["greenhouse_id"]))
+                    job_results.append({
+                        "greenhouse_id": str(doc["greenhouse_id"]),
+                        "score": 0.5,  # Default score for fallback
+                        "description": doc.get("description", "")
+                    })
         
-        if not results:
+        if not job_results:
+            print("  No jobs found")
             return SearchJobsResponse(
                 user_id=request.user_id,
                 greenhouse_ids=[],
-                count=0
+                count=0,
+                generation_triggered=False,
+                generation_job_ids=[]
             )
         
-        # Step 5: Mark the returned jobs as seen
-        for greenhouse_id in results:
+        # Step 4: Check which jobs have videos
+        greenhouse_ids = [j["greenhouse_id"] for j in job_results]
+        videos_cursor = videos_collection.find(
+            {"greenhouse_id": {"$in": greenhouse_ids}, "status": "ready"},
+            {"greenhouse_id": 1, "_id": 0}
+        )
+        jobs_with_videos = set()
+        async for doc in videos_cursor:
+            jobs_with_videos.add(doc["greenhouse_id"])
+        
+        print(f"  {len(jobs_with_videos)} jobs have videos out of {len(job_results)} searched")
+        
+        # Step 5: Split into categories
+        jobs_with_videos_above_threshold = []
+        jobs_with_videos_below_threshold = []
+        jobs_without_videos_above_threshold = []
+        
+        for job in job_results:
+            has_video = job["greenhouse_id"] in jobs_with_videos
+            above_threshold = job["score"] >= SIMILARITY_THRESHOLD
+            
+            if has_video:
+                if above_threshold:
+                    jobs_with_videos_above_threshold.append(job)
+                else:
+                    jobs_with_videos_below_threshold.append(job)
+            else:
+                if above_threshold:
+                    jobs_without_videos_above_threshold.append(job)
+        
+        print(f"  Above threshold with videos: {len(jobs_with_videos_above_threshold)}")
+        print(f"  Below threshold with videos: {len(jobs_with_videos_below_threshold)}")
+        print(f"  Above threshold without videos: {len(jobs_without_videos_above_threshold)}")
+        
+        # Step 6: Determine what to return and whether to trigger generation
+        generation_triggered = False
+        generation_job_ids = []
+        
+        # Combine available videos: above threshold first, then below threshold
+        available_with_videos = jobs_with_videos_above_threshold + jobs_with_videos_below_threshold
+        
+        # If we have enough above threshold, no generation needed
+        if len(jobs_with_videos_above_threshold) >= TARGET_COUNT:
+            results_to_return = [j["greenhouse_id"] for j in jobs_with_videos_above_threshold[:TARGET_COUNT]]
+            print(f"  Enough videos above threshold, returning {len(results_to_return)}")
+        else:
+            # Return best available (even if below threshold)
+            results_to_return = [j["greenhouse_id"] for j in available_with_videos[:TARGET_COUNT]]
+            print(f"  Returning {len(results_to_return)} available videos")
+            
+            # Calculate deficit and trigger generation
+            deficit = TARGET_COUNT - len(jobs_with_videos_above_threshold)
+            jobs_to_generate = jobs_without_videos_above_threshold[:min(deficit, MAX_GENERATE_PER_REQUEST)]
+            
+            if jobs_to_generate:
+                print(f"  Triggering generation for {len(jobs_to_generate)} jobs (deficit={deficit})")
+                generation_triggered = True
+                
+                for job in jobs_to_generate:
+                    # Select random template
+                    template_id = random.choice(VIDEO_TEMPLATES)
+                    
+                    job_id = await enqueue_generation_job(
+                        greenhouse_id=job["greenhouse_id"],
+                        query_fingerprint=query_fingerprint,
+                        user_id=request.user_id,
+                        template_id=template_id
+                    )
+                    if job_id:
+                        generation_job_ids.append(job_id)
+        
+        # Step 7: Mark the returned jobs as seen
+        for greenhouse_id in results_to_return:
             await user_job_views_collection.update_one(
                 {"user_id": request.user_id, "greenhouse_id": greenhouse_id},
                 {"$set": {"seen": True}},
                 upsert=True
             )
         
+        print(f"  Final response: {len(results_to_return)} jobs, generation_triggered={generation_triggered}")
+        
         return SearchJobsResponse(
             user_id=request.user_id,
-            greenhouse_ids=results,
-            count=len(results)
+            greenhouse_ids=results_to_return,
+            count=len(results_to_return),
+            generation_triggered=generation_triggered,
+            generation_job_ids=generation_job_ids
         )
         
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+
+# ============================================================================
+# Admin Endpoints - Generation Job Management
+# ============================================================================
+
+@app.get("/admin/generation-jobs")
+async def list_generation_jobs(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(50, ge=1, le=200),
+    skip: int = Query(0, ge=0)
+):
+    """
+    List generation jobs with optional status filter.
+    
+    Args:
+        status: Filter by status (queued, running, uploaded, indexed, ready, failed)
+        limit: Maximum number of jobs to return (default: 50)
+        skip: Number of jobs to skip for pagination
+    """
+    if generation_jobs_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+    
+    try:
+        query = {}
+        if status_filter:
+            query["status"] = status_filter
+        
+        cursor = generation_jobs_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
+        
+        jobs = []
+        async for doc in cursor:
+            jobs.append({
+                "job_id": doc.get("job_id"),
+                "greenhouse_id": doc.get("greenhouse_id"),
+                "template_id": doc.get("template_id"),
+                "status": doc.get("status"),
+                "user_id": doc.get("user_id"),
+                "query_fingerprint": doc.get("query_fingerprint"),
+                "output_video_id": doc.get("output_video_id"),
+                "error": doc.get("error"),
+                "retry_count": doc.get("retry_count", 0),
+                "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,
+                "started_at": doc.get("started_at").isoformat() if doc.get("started_at") else None,
+                "completed_at": doc.get("completed_at").isoformat() if doc.get("completed_at") else None
+            })
+        
+        total = await generation_jobs_collection.count_documents(query)
+        
+        return {
+            "jobs": jobs,
+            "count": len(jobs),
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@app.get("/admin/generation-jobs/stats")
+async def get_generation_jobs_stats():
+    """
+    Get statistics on generation jobs and videos.
+    """
+    if generation_jobs_collection is None or videos_collection is None or jobs_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+    
+    try:
+        # Count generation jobs by status
+        pipeline = [
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+        ]
+        status_counts = {}
+        async for doc in generation_jobs_collection.aggregate(pipeline):
+            status_counts[doc["_id"]] = doc["count"]
+        
+        # Count videos
+        total_videos = await videos_collection.count_documents({})
+        ready_videos = await videos_collection.count_documents({"status": "ready"})
+        
+        # Count jobs with and without videos
+        total_jobs = await jobs_collection.count_documents({"active": True})
+        
+        # Get greenhouse_ids that have videos
+        video_greenhouse_ids = await videos_collection.distinct("greenhouse_id", {"status": "ready"})
+        jobs_with_videos = len(video_greenhouse_ids)
+        
+        return {
+            "generation_jobs": {
+                "queued": status_counts.get("queued", 0),
+                "running": status_counts.get("running", 0),
+                "uploaded": status_counts.get("uploaded", 0),
+                "indexed": status_counts.get("indexed", 0),
+                "ready": status_counts.get("ready", 0),
+                "failed": status_counts.get("failed", 0),
+                "total": sum(status_counts.values())
+            },
+            "videos": {
+                "total": total_videos,
+                "ready": ready_videos
+            },
+            "jobs": {
+                "total_active": total_jobs,
+                "with_videos": jobs_with_videos,
+                "without_videos": total_jobs - jobs_with_videos
+            },
+            "config": {
+                "similarity_threshold": SIMILARITY_THRESHOLD,
+                "target_count": TARGET_COUNT,
+                "max_generate_per_request": MAX_GENERATE_PER_REQUEST,
+                "max_user_concurrent_jobs": MAX_USER_CONCURRENT_JOBS
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@app.get("/admin/generation-jobs/{job_id}")
+async def get_generation_job(job_id: str):
+    """
+    Get details of a specific generation job.
+    """
+    if generation_jobs_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+    
+    try:
+        doc = await generation_jobs_collection.find_one({"job_id": job_id})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Generation job {job_id} not found")
+        
+        return {
+            "job_id": doc.get("job_id"),
+            "greenhouse_id": doc.get("greenhouse_id"),
+            "template_id": doc.get("template_id"),
+            "status": doc.get("status"),
+            "user_id": doc.get("user_id"),
+            "query_fingerprint": doc.get("query_fingerprint"),
+            "output_video_id": doc.get("output_video_id"),
+            "error": doc.get("error"),
+            "retry_count": doc.get("retry_count", 0),
+            "worker_id": doc.get("worker_id"),
+            "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,
+            "updated_at": doc.get("updated_at").isoformat() if doc.get("updated_at") else None,
+            "started_at": doc.get("started_at").isoformat() if doc.get("started_at") else None,
+            "completed_at": doc.get("completed_at").isoformat() if doc.get("completed_at") else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@app.post("/admin/generation-jobs/{job_id}/retry")
+async def retry_generation_job(job_id: str):
+    """
+    Force retry a failed generation job by resetting its status to queued.
+    """
+    if generation_jobs_collection is None:
+        raise HTTPException(status_code=503, detail="MongoDB not connected")
+    
+    try:
+        result = await generation_jobs_collection.update_one(
+            {"job_id": job_id, "status": "failed"},
+            {
+                "$set": {
+                    "status": "queued",
+                    "updated_at": datetime.utcnow(),
+                    "error": None,
+                    "worker_id": None,
+                    "started_at": None
+                },
+                "$inc": {"retry_count": 1}
+            }
+        )
+        
+        if result.matched_count == 0:
+            # Check if job exists
+            job = await generation_jobs_collection.find_one({"job_id": job_id})
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Generation job {job_id} not found")
+            else:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Job is not in failed status (current: {job.get('status')})"
+                )
+        
+        return {
+            "message": f"Job {job_id} queued for retry",
+            "job_id": job_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @app.get("/videos/list")
