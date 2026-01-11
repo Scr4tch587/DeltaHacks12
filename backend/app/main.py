@@ -1,14 +1,33 @@
 import os
-from typing import List
-from fastapi import FastAPI, HTTPException, Query
+from typing import List, Optional
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, Query, Depends, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-from pydantic import BaseModel
+from bson import ObjectId
+from pydantic import BaseModel, EmailStr
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 import google.generativeai as genai
+from app.auth import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    decode_access_token,
+)
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load environment variables
 MONGODB_URI = os.getenv("MONGODB_URI", "")
@@ -28,14 +47,42 @@ EMBEDDING_DIMENSION = 768
 # MongoDB client (will be initialized on startup)
 client = None
 db = None
+users_collection = None
 user_job_views_collection = None
 jobs_collection = None
+
+# Security
+security = HTTPBearer()
 
 # S3 client for Vultr Object Storage
 s3_client = None
 
 
 # Pydantic models for request/response
+class UserRegister(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+    created_at: Optional[datetime] = None
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserResponse
+
+
 class MarkSeenRequest(BaseModel):
     user_id: str
     greenhouse_id: str
@@ -66,7 +113,7 @@ class SearchJobsResponse(BaseModel):
 @app.on_event("startup")
 async def startup_db_client():
     """Initialize MongoDB connection, S3 client, and Gemini API on startup"""
-    global client, db, s3_client, user_job_views_collection, jobs_collection
+    global client, db, s3_client, users_collection, user_job_views_collection, jobs_collection
     
     # Initialize MongoDB
     if MONGODB_URI:
@@ -76,6 +123,12 @@ async def startup_db_client():
             # Test the connection
             await client.admin.command('ping')
             print(f"✓ Connected to MongoDB Atlas (database: {MONGODB_DB})")
+            
+            # Initialize users collection and create indexes
+            users_collection = db.users
+            await users_collection.create_index("username", unique=True)
+            await users_collection.create_index("email", unique=True)
+            print("✓ users collection initialized with indexes")
             
             # Initialize user_job_views collection and create index
             user_job_views_collection = db.user_job_views
@@ -94,6 +147,7 @@ async def startup_db_client():
             print(f"✗ MongoDB connection failed: {e}")
             client = None
             db = None
+            users_collection = None
             user_job_views_collection = None
             jobs_collection = None
     else:
@@ -376,6 +430,126 @@ async def health_storage():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Object Storage error: {str(e)}")
+
+
+# ============================================================================
+# Authentication - User registration, login, and token verification
+# ============================================================================
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Get current user from JWT token"""
+    token = credentials.credentials
+    payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+    
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    
+    if users_collection is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+    
+    # Convert string user_id back to ObjectId
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid user ID format")
+    
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    return user
+
+
+@app.post("/auth/register", response_model=TokenResponse)
+async def register(user_data: UserRegister):
+    """Register a new user"""
+    if users_collection is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+    
+    # Check if username already exists
+    existing_user = await users_collection.find_one({"username": user_data.username})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    # Check if email already exists
+    existing_email = await users_collection.find_one({"email": user_data.email})
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Hash password
+    hashed_password = get_password_hash(user_data.password)
+    
+    # Create user document
+    user_doc = {
+        "username": user_data.username,
+        "email": user_data.email,
+        "hashed_password": hashed_password,
+        "created_at": datetime.utcnow(),
+    }
+    
+    # Insert user
+    result = await users_collection.insert_one(user_doc)
+    user_id = str(result.inserted_id)
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": user_id})
+    
+    # Return token and user info
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user_id,
+            username=user_data.username,
+            email=user_data.email,
+            created_at=user_doc["created_at"],
+        ),
+    )
+
+
+@app.post("/auth/login", response_model=TokenResponse)
+async def login(user_data: UserLogin):
+    """Login with username and password"""
+    if users_collection is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+    
+    # Find user by username
+    user = await users_collection.find_one({"username": user_data.username})
+    if user is None:
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    
+    # Verify password
+    if not verify_password(user_data.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    
+    # Create access token
+    user_id = str(user["_id"])
+    access_token = create_access_token(data={"sub": user_id})
+    
+    # Return token and user info
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user_id,
+            username=user["username"],
+            email=user["email"],
+            created_at=user.get("created_at"),
+        ),
+    )
+
+
+@app.get("/auth/me", response_model=UserResponse)
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """Get current user information"""
+    return UserResponse(
+        id=str(current_user["_id"]),
+        username=current_user["username"],
+        email=current_user["email"],
+        created_at=current_user.get("created_at"),
+    )
 
 
 # ============================================================================
