@@ -5,6 +5,28 @@ from pathlib import Path
 from typing import Dict, List
 import aiohttp
 
+# Handle nested event loops (when called from FastAPI/async context)
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+except ImportError:
+    pass
+
+
+def run_async(coro):
+    """Run async coroutine, handling both sync and async contexts."""
+    try:
+        loop = asyncio.get_running_loop()
+        # Already in an async context, create a new task
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
+    except RuntimeError:
+        # No running loop, use asyncio.run
+        return asyncio.run(coro)
+
+
 from config import (
     FISH_AUDIO_API_KEY,
     FISH_AUDIO_URL,
@@ -110,7 +132,7 @@ class TTSGenerator:
             of sentences. The text should already contain these markers.
         """
         # Use async implementation for single requests too
-        return asyncio.run(self._generate_single_speech_async(text, character, line_index, force_regenerate))
+        return run_async(self._generate_single_speech_async(text, character, line_index, force_regenerate))
 
     async def _generate_single_speech_async(
         self,
@@ -149,7 +171,7 @@ class TTSGenerator:
             ]
         """
         # Use async implementation for concurrent generation
-        return asyncio.run(self._generate_script_audio_async(script, force_regenerate))
+        return run_async(self._generate_script_audio_async(script, force_regenerate))
 
     async def _generate_script_audio_async(
         self,

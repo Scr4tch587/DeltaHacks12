@@ -18,3 +18,4 @@ fish-audio-sdk>=1.0.0  # Official Fish Audio SDK
 
 # Utilities
 python-dotenv>=1.0.0
+nest-asyncio>=1.6.0  # Handle nested event loops in FastAPI
