@@ -25,11 +25,16 @@ STANDARD_FIELD_PATTERNS: dict[str, str] = {
     r"portfolio|website": "website_url",
     r"years?\s*(of)?\s*experience": "years_of_experience",
     r"authorized?\s*(to)?\s*work": "work_authorization",
-    r"sponsor(ship)?": "requires_sponsorship",
+    r"sponsor(ship)?|visa\s*(requirement|status)|require.*sponsor": "requires_sponsorship",
     r"gender": "gender",
     r"race|ethnicity": "race_ethnicity",
     r"veteran": "veteran_status",
     r"disability": "disability_status",
+    r"^country$|country\s*code|phone.*country": "country",
+    r"affirmation|signature|sign\s*here|type.*name.*agree|consent": "signature",
+    r"salary|compensation|pay\s*expectation": "salary",
+    r"state\s*(of)?\s*residen|current\s*state|what\s*state|from.*state.*work": "state",
+    r"pronoun": "pronoun",
 }
 
 
@@ -84,7 +89,8 @@ class GreenhouseApplier:
         url: str,
         user_profile: dict[str, Any],
         job_description: str = "",
-        cached_responses: dict[str, Any] | None = None
+        cached_responses: dict[str, Any] | None = None,
+        pre_analyzed_fields: list[dict[str, Any]] | None = None
     ) -> dict[str, Any]:
         """
         Analyze a job application form and generate recommended values.
@@ -96,12 +102,34 @@ class GreenhouseApplier:
             user_profile: User's profile data
             job_description: Job description text for AI context
             cached_responses: User's cached form responses
+            pre_analyzed_fields: Optional list of fields from DB to skip browser extraction
 
         Returns:
             Dict with 'fields' list and 'form_fingerprint'
         """
         cached_responses = cached_responses or {"standard": {}, "custom": {}}
 
+        # FAST PATH: Use pre-analyzed fields if available
+        if pre_analyzed_fields:
+            print(f"Using {len(pre_analyzed_fields)} pre-analyzed fields (skipping browser extraction)")
+            fields = pre_analyzed_fields
+            
+            # Generate recommendations for each field (AI)
+            # This is fast and CPU-bound, no browser needed
+            await self._generate_recommendations(
+                fields, user_profile, job_description, cached_responses
+            )
+
+            # Compute fingerprint
+            fingerprint = compute_form_fingerprint(fields)
+
+            return {
+                "status": "success",
+                "fields": fields,
+                "form_fingerprint": fingerprint
+            }
+
+        # SLOW PATH: Launch browser and extract
         async with BROWSER_SEMAPHORE:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=self.headless)
@@ -146,7 +174,9 @@ class GreenhouseApplier:
         job_description: str = "",
         expected_fingerprint: str | None = None,
         submit: bool = True,
-        keep_open: bool = False
+        keep_open: bool = False,
+        output_path: str | None = None,
+        verification_callback: Any | None = None
     ) -> dict[str, Any]:
         """
         Fill and optionally submit a job application form.
@@ -159,6 +189,7 @@ class GreenhouseApplier:
             expected_fingerprint: If provided, verify form hasn't changed
             submit: Whether to click submit
             keep_open: Whether to keep browser open after completion (waits for user input)
+            output_path: Optional path to save the final HTML content
 
         Returns:
             Result dict with status and message
@@ -223,8 +254,18 @@ class GreenhouseApplier:
 
                     result = {"status": "dry_run", "message": "Form filled, submit skipped."}
                     if submit:
-                        result = await self._submit_form(page)
+                        result = await self._submit_form(page, verification_callback=verification_callback)
                     
+                    # Save output HTML if requested
+                    if output_path:
+                        try:
+                            content = await page.content()
+                            with open(output_path, "w", encoding="utf-8") as f:
+                                f.write(content)
+                            # print(f"DEBUG: Page HTML saved to {output_path}")
+                        except Exception as e:
+                            print(f"Failed to save output HTML: {e}")
+
                     if keep_open:
                         print(f"\nBrowser kept open. Status: {result['status']}")
                         print("Press Enter to close browser and finish...")
@@ -248,7 +289,7 @@ class GreenhouseApplier:
                 if not is_visible:
                     # Try to identify what we are skipping
                     selector_debug = await self._get_unique_selector(cs)
-                    print(f"DEBUG: Skipping invisible react-select: {selector_debug}")
+                    # print(f"DEBUG: Skipping invisible react-select: {selector_debug}")
                     continue
 
                 # Try to get the associated input
@@ -264,6 +305,11 @@ class GreenhouseApplier:
                 # Get label
                 label = await self._get_field_label(page, cs, field_id)
 
+                # Check if required (including label check)
+                required = False
+                if label and ("*" in label or "required" in label.lower()):
+                    required = True
+
                 # Try to get options by clicking and reading menu
                 options = await self._get_react_select_options(page, cs)
 
@@ -275,7 +321,7 @@ class GreenhouseApplier:
                     "selector": selector,
                     "label": label or field_id,
                     "field_type": "react_select",
-                    "required": False,  # Hard to determine for react-select
+                    "required": required,
                     "options": options,
                     "recommended_value": None,
                     "final_value": None,
@@ -286,9 +332,58 @@ class GreenhouseApplier:
             except Exception as e:
                 print(f"Error extracting react-select: {e}")
 
-        # 2. Handle standard inputs, textareas, selects
+        # 2. Handle Checkbox / Radio Groups
+        groups = await page.query_selector_all("fieldset.checkbox, fieldset.radio, .checkbox-group, .radio-group")
+        for group in groups:
+            try:
+                if not await group.is_visible():
+                    continue
+                
+                # Get the label from legend or label
+                label_el = await group.query_selector("legend, .label, label")
+                label = ""
+                if label_el:
+                    label = await label_el.text_content()
+                
+                if not label:
+                    # Fallback to id
+                    label = await group.get_attribute("id") or f"group_{field_counter}"
+                
+                field_id = await group.get_attribute("id") or await group.get_attribute("name") or f"group_{field_counter}"
+                field_counter += 1
+
+                # Determine options
+                options = []
+                option_labels = await group.query_selector_all("label")
+                for ol in option_labels:
+                    txt = await ol.text_content()
+                    if txt:
+                        options.append(txt.strip())
+                
+                field_type = "checkbox_group" if "checkbox" in (await group.get_attribute("class") or "").lower() else "radio_group"
+                required = await group.get_attribute("aria-required") == "true" or "*" in label
+
+                selector = await self._get_unique_selector(group)
+
+                fields.append({
+                    "field_id": field_id,
+                    "selector": selector,
+                    "label": label.strip(),
+                    "field_type": field_type,
+                    "required": required,
+                    "options": options,
+                    "recommended_value": None,
+                    "final_value": None,
+                    "source": "manual",
+                    "confidence": 0.0,
+                    "reasoning": None
+                })
+            except Exception as e:
+                print(f"Error extracting group: {e}")
+
+        # 3. Handle standard inputs, textareas, selects
         elements = await page.query_selector_all(
-            "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='reset']), "
+            "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='reset']):not([type='checkbox']):not([type='radio']), "
             "textarea, select"
         )
 
@@ -351,6 +446,20 @@ class GreenhouseApplier:
                 required = await el.get_attribute("required") is not None
                 aria_required = await el.get_attribute("aria-required")
                 if aria_required == "true":
+                    required = True
+                
+                # Special check for Greenhouse file uploads (container has aria-required)
+                if field_type == "file":
+                    # Check parent .file-upload container
+                    is_gh_required = await el.evaluate("""e => {
+                        const container = e.closest('.file-upload');
+                        return container ? container.getAttribute('aria-required') === 'true' : false;
+                    }""")
+                    if is_gh_required:
+                        required = True
+                
+                # Fallback: Check label for *
+                if not required and label and ("*" in label or "required" in label.lower()):
                     required = True
 
                 # Get selector
@@ -532,6 +641,7 @@ class GreenhouseApplier:
 
             # Check profile first for core fields
             profile_value = self._get_profile_value(field, user_profile)
+            print(f"Debug: _get_profile_value for '{label}' returned: '{profile_value}'")
             if profile_value:
                 field["recommended_value"] = profile_value
                 field["source"] = "profile"
@@ -569,12 +679,18 @@ class GreenhouseApplier:
         label_lower = field["label"].lower()
         field_id_lower = str(field.get("field_id", "")).lower()
 
+        # HARDCODED: Always use this phone number for all applications
+        phone_patterns = ["phone", "telephone", "mobile", "contact number"]
+        if any(pattern in label_lower or pattern in field_id_lower for pattern in phone_patterns):
+            # Check if it's not country-related (avoid matching "phone country" fields)
+            if "country" not in label_lower:
+                return "+1 3052475339"
+
         # Direct mappings
         mappings = {
             "first_name": ["first name", "firstname", "first_name"],
             "last_name": ["last name", "lastname", "last_name"],
             "email": ["email", "e-mail"],
-            "phone": ["phone", "telephone", "mobile"],
             "linkedin_url": ["linkedin"],
             "github_url": ["github"],
             "website_url": ["website", "portfolio"],
@@ -583,18 +699,80 @@ class GreenhouseApplier:
             "gender": ["gender", "sex"],
             "veteran_status": ["veteran"],
             "disability": ["disability", "handicap"],
-            "authorization": ["authorized to work", "work authorization", "visa"],
-            "sponsorship": ["sponsorship", "sponsor"],
+            "authorization": ["authorized to work", "work authorization"],
+            "sponsorship": ["sponsorship", "sponsor", "visa requirement", "visa status", "require visa"],
+            "salary": ["salary", "compensation", "pay expectation", "desired salary"],
         }
 
         for profile_key, patterns in mappings.items():
             for pattern in patterns:
                 if pattern in label_lower or pattern in field_id_lower:
+                    # Special handling for location: Don't match if it looks like a specific address part
+                    # (e.g. "City", "Zip Code") but the pattern matched "address"
+                    # Also skip if it contains "pronoun" (e.g. "we address you with the appropriate pronoun")
+                    if profile_key == "location":
+                        address_parts = ["city", "state", "province", "region", "zip", "postal", "code", "street", "line", "country", "pronoun"]
+                        if any(part in label_lower for part in address_parts):
+                            continue
+
                     value = profile.get(profile_key)
                     if value:
                         # Debug match
                         # print(f"Matched field '{field['label']}' to profile key '{profile_key}' via pattern '{pattern}'")
                         return str(value)
+
+        # Special handling for country field - extract from location
+        if "country" in label_lower or "country" in field_id_lower:
+            location = profile.get("location", "")
+            if location:
+                # Try to extract country from location string like "New York, NY, USA"
+                loc_lower = location.lower()
+                if "usa" in loc_lower or "united states" in loc_lower or ", us" in loc_lower:
+                    return "United States"
+                elif "canada" in loc_lower:
+                    return "Canada"
+                elif "uk" in loc_lower or "united kingdom" in loc_lower:
+                    return "United Kingdom"
+                # For phone country selectors, they often want country code format
+                # Return the last part of location as a guess
+                parts = location.split(",")
+                if len(parts) >= 1:
+                    country_guess = parts[-1].strip()
+                    if country_guess.upper() == "USA":
+                        return "United States"
+                    return country_guess
+
+        # Special handling for affirmation/signature fields - use full name
+        # These are fields where the user types their name as consent/acknowledgement
+        affirmation_patterns = ["affirmation", "signature", "sign here", "type your name", "type name", "consent", "acknowledge"]
+        if any(p in label_lower for p in affirmation_patterns):
+            first = profile.get("first_name", "")
+            last = profile.get("last_name", "")
+            if first and last:
+                return f"{first} {last}"
+
+        # Special handling for state field - extract from location
+        state_patterns = ["state of residen", "current state", "what state", "from what state", "state do you", "plan to work"]
+        if any(p in label_lower for p in state_patterns):
+            print(f"Debug: State pattern matched for label: '{label_lower}'")
+            location = profile.get("location", "")
+            print(f"Debug: Location from profile: '{location}'")
+            if location:
+                # Parse "New York, NY, USA" or "San Francisco, CA, USA"
+                parts = [p.strip() for p in location.split(",")]
+                if len(parts) >= 2:
+                    # Second part is usually state abbreviation (NY, CA, etc.)
+                    state_abbrev = parts[1].strip().upper()
+                    # Return abbreviation directly - dropdowns usually use abbreviations
+                    # and typing "NY" will filter to show "New York" or "NY" options
+                    print(f"Debug: Returning state abbreviation: '{state_abbrev}'")
+                    return state_abbrev
+
+        # Special handling for pronoun field
+        if "pronoun" in label_lower:
+            print(f"Debug: Pronoun pattern matched for label: '{label_lower}'")
+            # Default to "Prefer not to say" for privacy
+            return "Prefer not to say"
 
         return None
 
@@ -682,9 +860,15 @@ class GreenhouseApplier:
                 continue
             
             if not value:
-                if is_required:
+                # Special handling for groups: try to find a "None" / "N/A" option if required
+                if is_required and field_type in ["checkbox_group", "radio_group"]:
+                     print(f"Required group '{label}' has no value. Attempting auto-fill of negative option.")
+                     # proceed with empty value to let the fill method handle fallback
+                elif is_required:
                     print(f"Skipping required field with NO value: '{label}'")
-                continue
+                    continue
+                else:
+                    continue
 
             print(f"Filling field '{label}' (Type: {field_type}) with value: '{str(value)[:50]}...'")
             
@@ -697,6 +881,10 @@ class GreenhouseApplier:
                     await self._fill_react_select(page, selector, value, label)
                 elif field_type == "select":
                     await self._fill_standard_select(page, selector, value)
+                elif field_type == "checkbox_group":
+                    await self._fill_checkbox_group(page, selector, value, required=is_required)
+                elif field_type == "radio_group":
+                    await self._fill_radio_group(page, selector, value, required=is_required)
                 else:
                     # Pass explicit_country_field_exists to avoid double-setting flag
                     await self._fill_text_field(
@@ -709,6 +897,198 @@ class GreenhouseApplier:
             except Exception as e:
                 print(f"Error filling {label}: {e}")
 
+        # 3. Post-fill: Go through all REQUIRED select fields, open dropdown and press enter to select first option
+        # This helps trigger onChange handlers and validates selections
+        print("\n--- POST-FILL: Opening dropdowns and selecting first option (REQUIRED fields only) ---")
+        # Only process required select fields, but EXCLUDE country selectors that are part of phone widgets
+        select_fields = []
+        for f in fields:
+            if f.get("field_type") in ["select", "react_select"] and f.get("required"):
+                label = f.get("label", "").lower()
+                # Skip country selectors (they're usually part of phone input widgets)
+                if "country" not in label:
+                    select_fields.append(f)
+                else:
+                    print(f"Skipping country selector '{f.get('label')}' (likely part of phone widget)")
+        
+        # Safety: Cap at reasonable number to prevent infinite loops
+        max_fields = min(len(select_fields), 50)
+        
+        for idx in range(max_fields):
+            field = select_fields[idx]
+            selector = field.get("selector")
+            field_type = field.get("field_type")
+            label = field.get("label", "Unknown")
+            
+            if not selector:
+                continue
+                
+            try:
+                print(f"Post-fill [{idx+1}/{max_fields}]: Processing {field_type} field '{label}'")
+                
+                if field_type == "select":
+                    # Standard HTML select element
+                    locator = page.locator(selector).first
+                    if await locator.count() > 0 and await locator.is_visible():
+                        # Click to open dropdown
+                        await locator.click()
+                        await page.wait_for_timeout(300)
+                        
+                        # Press Enter to select the highlighted option
+                        await page.keyboard.press("Enter")
+                        await page.wait_for_timeout(200)
+                        
+                        # Press Escape to ensure dropdown is closed
+                        await page.keyboard.press("Escape")
+                        await page.wait_for_timeout(100)
+                
+                elif field_type == "react_select":
+                    # React-Select component
+                    target = page.locator(selector).first
+                    if await target.count() > 0 and await target.is_visible():
+                        # Click to open the dropdown menu
+                        await target.click()
+                        await page.wait_for_timeout(500)  # Give more time for menu to open
+                        
+                        # Check if dropdown menu is actually visible
+                        try:
+                            menu_visible = await page.locator(".select__menu, .select__menu-list, [class*='menu']").first.is_visible()
+                        except:
+                            menu_visible = False
+                        
+                        if menu_visible:
+                            # Press Enter to select the first/highlighted option
+                            await page.keyboard.press("Enter")
+                            await page.wait_for_timeout(200)
+                        else:
+                            # Menu didn't open, just press Escape to close and move on
+                            await page.keyboard.press("Escape")
+                            await page.wait_for_timeout(100)
+                        
+            except Exception as e:
+                print(f"Error in post-fill for {label}: {e}")
+                # Try to close any open dropdown before continuing
+                try:
+                    await page.keyboard.press("Escape")
+                    await page.wait_for_timeout(100)
+                except:
+                    pass
+                # Continue to next field
+
+        # Post-fill validation: check for fields with validation errors
+        try:
+            error_fields = await page.query_selector_all("[aria-invalid='true'], .input-wrapper--error")
+            if len(error_fields) > 0:
+                print(f"Warning: {len(error_fields)} field(s) have validation errors after filling")
+                for ef in error_fields[:5]:  # Log first 5
+                    label_attr = await ef.get_attribute("aria-label") or await ef.get_attribute("id") or "unknown"
+                    print(f"  - Field with error: {label_attr}")
+        except Exception as e:
+            print(f"Debug: Could not check validation errors: {e}")
+
+    async def _fill_checkbox_group(self, page: Page, selector: str, value: Any, required: bool = False):
+        """Fill a checkbox group."""
+        if not selector:
+            return
+        
+        container = page.locator(selector).first
+        if await container.count() == 0:
+            return
+
+        # Prepare selected options
+        selected_options = []
+        if value:
+            if isinstance(value, str):
+                selected_options = [v.strip().lower() for v in value.split(",")]
+            elif isinstance(value, list):
+                selected_options = [str(v).lower() for v in value]
+            else:
+                selected_options = [str(value).lower()]
+        
+        # Check if we should look for a "None" / "N/A" option
+        # Trigger if:
+        # 1. No options selected but field is required
+        # 2. Value explicitly says "none", "n/a", etc.
+        none_keywords = ["none", "n/a", "not applicable", "no", "false"]
+        should_pick_none = False
+        
+        if not selected_options and required:
+            should_pick_none = True
+        elif any(k in (selected_options[0] if selected_options else "") for k in none_keywords) and len(selected_options) == 1:
+            should_pick_none = True
+
+        checkbox_wrappers = await container.locator(".checkbox__wrapper, div").all()
+        for wrapper in checkbox_wrappers:
+            label_el = wrapper.locator("label")
+            if await label_el.count() > 0:
+                label_text = (await label_el.text_content() or "").strip().lower()
+                input_el = wrapper.locator("input[type='checkbox']")
+                
+                # Check match
+                is_match = False
+                if selected_options:
+                    # Strict match first, then substring
+                    if any(opt == label_text for opt in selected_options):
+                        is_match = True
+                    elif any(opt in label_text or label_text in opt for opt in selected_options):
+                        # Avoid over-matching "No" with "North"
+                        is_match = True
+                
+                # If we are in "pick none" mode, look for N/A labels
+                if should_pick_none:
+                    if any(k == label_text or k in label_text for k in none_keywords):
+                        is_match = True
+
+                if is_match:
+                    if not await input_el.is_checked():
+                        await input_el.check()
+
+    async def _fill_radio_group(self, page: Page, selector: str, value: str, required: bool = False):
+        """Fill a radio group."""
+        if not selector:
+            return
+        
+        container = page.locator(selector).first
+        if await container.count() == 0:
+            return
+
+        val_lower = str(value).lower() if value else ""
+        
+        # Check for fallback
+        none_keywords = ["none", "n/a", "not applicable", "no", "false"]
+        should_pick_none = False
+        if not val_lower and required:
+            should_pick_none = True
+        elif val_lower in none_keywords:
+            should_pick_none = True
+
+        radio_wrappers = await container.locator("div").all()
+        best_match = None
+        
+        for wrapper in radio_wrappers:
+            label_el = wrapper.locator("label")
+            if await label_el.count() > 0:
+                label_text = (await label_el.text_content() or "").strip().lower()
+                input_el = wrapper.locator("input[type='radio']")
+                
+                if val_lower:
+                    if val_lower == label_text:
+                        best_match = input_el
+                        break
+                    elif val_lower in label_text or label_text in val_lower:
+                        if not best_match:
+                            best_match = input_el
+                
+                if should_pick_none:
+                    if any(k == label_text or k in label_text for k in none_keywords):
+                        best_match = input_el
+                        # Don't break immediately, prioritize exact "No" over "Not sure" if both exist? 
+                        # Usually just taking the first N/A is fine.
+                        break
+        
+        if best_match:
+            await best_match.check()
+
     async def _fill_text_field(self, page: Page, selector: str, value: str, country_hint: str | None = None, skip_iti_flag: bool = False):
         """Fill a text input or textarea."""
         if not selector:
@@ -720,7 +1100,12 @@ class GreenhouseApplier:
             
             # Special handling for phone fields (often use intl-tel-input which needs typing)
             is_phone = "phone" in selector.lower() or await locator.get_attribute("type") == "tel"
-            
+
+            # Strip all non-digit characters from phone numbers for cleaner input
+            if is_phone:
+                import re
+                value = re.sub(r'\D', '', str(value))
+
             # Always click and clear first
             await locator.click()
             await locator.clear()
@@ -740,13 +1125,26 @@ class GreenhouseApplier:
                             if not skip_iti_flag and not str(value).startswith("+") and country_hint:
                                 await selected_country_btn.click()
                                 await page.wait_for_timeout(300)
-                                
+
+                                # Wait for dropdown to become visible (iti__hide class removed)
+                                dropdown = page.locator(".iti__dropdown-content:not(.iti__hide)").first
+                                try:
+                                    await dropdown.wait_for(state="visible", timeout=2000)
+                                except Exception:
+                                    # Dropdown may have different structure, continue anyway
+                                    pass
+
                                 # ITI usually has a search input in the dropdown
                                 search_input = page.locator(".iti__search-input").first
-                                if await search_input.count() > 0 and await search_input.is_visible():
+                                if await search_input.count() > 0:
                                     await search_input.fill(country_hint)
                                     await page.wait_for_timeout(500)
-                                    await page.keyboard.press("Enter")
+                                    # Try to click first visible matching country
+                                    first_match = page.locator(".iti__country:not(.iti__hidden)").first
+                                    if await first_match.count() > 0:
+                                        await first_match.click()
+                                    else:
+                                        await page.keyboard.press("Enter")
                                     await page.wait_for_timeout(300)
                 except Exception as e:
                     print(f"Debug: Failed to set ITI country code: {e}")
@@ -798,12 +1196,31 @@ class GreenhouseApplier:
         # 2. Try by Label if selector failed
         if not target and label:
             try:
+                # Find label element
                 label_el = page.get_by_text(label, exact=True).first
                 if await label_el.count() > 0:
-                     # Go up to a container that has a select__control
-                     target = label_el.locator("xpath=ancestor::div[contains(@class, 'field') or contains(@class, 'input-wrapper')]//div[contains(@class, 'select__control')]").first
+                    # Check for 'for' attribute
+                    for_attr = await label_el.get_attribute("for")
+                    if for_attr:
+                        # React-select often uses the input ID, but the click target is the control
+                        # Try finding control by aria-labelledby or container of the input
+                        target = page.locator(f".select__control:has(input[id='{for_attr}'])").first
+                    
+                    if not target or not await target.is_visible():
+                        # Go up to a container that has a select__control
+                        # Use a more flexible xpath to find the control in the same container
+                        target = label_el.locator("xpath=ancestor::div[contains(@class, 'field') or contains(@class, 'input-wrapper') or contains(@class, 'select')]//div[contains(@class, 'select__control')]").first
             except Exception:
                 pass
+
+        if not target or not await target.is_visible():
+             # Last ditch: try finding by value if it's already filled? No, we want to fill it.
+             # Try finding ANY react select near the label text
+             if label:
+                 try:
+                     target = page.locator(f"div:has-text('{label}') >> .select__control").first
+                 except:
+                     pass
 
         if not target or not await target.is_visible():
              if selector:
@@ -813,7 +1230,12 @@ class GreenhouseApplier:
         await target.scroll_into_view_if_needed()
         
         # Determine if this is likely an async field
-        field_id = await target.get_attribute("id") or ""
+        # ... (rest of the function remains the same)
+        try:
+            field_id = await target.get_attribute("id") or ""
+        except:
+            field_id = ""
+            
         field_info_str = (selector + " " + label + " " + field_id).lower()
         is_async = "location" in field_info_str or "city" in field_info_str or "school" in field_info_str or "university" in field_info_str
         
@@ -836,7 +1258,11 @@ class GreenhouseApplier:
             option_els = await page.locator(".select__option, [class*='option'], div[id*='option']").all()
             
             # Keywords for "Decline" / "Prefer not to answer"
-            decline_keywords = ["decline", "prefer not", "do not wish", "not specify", "wish to answer"]
+            decline_keywords = [
+                "decline", "prefer not", "do not wish", "not specify", "wish to answer",
+                "rather not", "choose not", "don't wish", "no answer", "i prefer not",
+                "prefer to not", "not to disclose", "do not want", "choose to not", "opt out"
+            ]
             val_lower = value.lower()
             is_decline_value = any(k in val_lower for k in decline_keywords)
             
@@ -871,28 +1297,54 @@ class GreenhouseApplier:
                         match_found = True
                         break
             
-            # 3. Fuzzy/Substring (Restricted)
+            # 3. Special handling for Yes/No type answers
+            # If the value implies "no" (contains "do not", "not require", etc.), match "No"
+            # If the value implies "yes" (contains "i am", "will", etc.), match "Yes"
+            if not match_found:
+                # Negative indicators - phrases that imply "No" answer
+                negative_indicators = ["do not", "don't", "not require", "no sponsor", "not need", "won't", "cannot", "can not", "am not"]
+                # Positive indicators - phrases that imply "Yes" answer
+                positive_indicators = ["i am", "i will", "i can", "yes", "am authorized", "am legally", "am comfortable", "willing to"]
+
+                is_negative = any(ind in val_lower for ind in negative_indicators)
+                is_positive = any(ind in val_lower for ind in positive_indicators)
+
+                # IMPORTANT: Negative takes precedence (e.g., "do not require" beats "require")
+                if is_negative:
+                    # First try explicit "No"
+                    for text, opt in visible_options:
+                        opt_lower = text.lower()
+                        if opt_lower in ["no", "no,"]:
+                            best_match_el = opt
+                            match_found = True
+                            break
+                    # If no "No" option found, try "None" / "Not required" type options
+                    # (common for visa type dropdowns where the answer is "I don't need a visa")
+                    if not match_found:
+                        none_keywords = ["none", "not required", "n/a", "not applicable", "does not apply",
+                                        "do not require", "don't need", "not needed", "no visa", "no sponsorship"]
+                        for text, opt in visible_options:
+                            opt_lower = text.lower()
+                            if any(nk in opt_lower for nk in none_keywords):
+                                best_match_el = opt
+                                match_found = True
+                                break
+                elif is_positive:
+                    for text, opt in visible_options:
+                        opt_lower = text.lower()
+                        if opt_lower in ["yes", "yes,"]:
+                            best_match_el = opt
+                            match_found = True
+                            break
+
+            # 4. Fuzzy/Substring (Restricted)
             if not match_found:
                 for text, opt in visible_options:
                     opt_lower = text.lower()
-                    # Only allow substring if option is long enough (>3 chars) OR value is very short?
-                    # "No" is short. "Prefer not to answer" is long.
-                    # if "No" in "Prefer not to answer" -> BAD.
-                    # if "US" in "USA" -> OK.
-                    
-                    # Logic: 
-                    # If VAL contains OPT (e.g. Val="I am Hispanic", Opt="Hispanic") -> Match
-                    # If OPT contains VAL (e.g. Val="Hispanic", Opt="I am Hispanic") -> Match
-                    
-                    # BUT guard against "No" in "Prefer NOT..."
-                    # We can use word boundary check or length check.
-                    
-                    # Simple heuristic:
-                    # If option is "No", only match if value IS "No". (Handled by Exact Match above)
-                    # So here, if opt_lower == "no" or opt_lower == "yes", SKIP substring check.
+                    # Guard against "No" in "Prefer NOT..." - skip short options
                     if opt_lower in ["no", "yes"]:
                         continue
-                        
+
                     if val_lower in opt_lower or opt_lower in val_lower:
                         best_match_el = opt
                         match_found = True
@@ -908,7 +1360,8 @@ class GreenhouseApplier:
                 return
             
             # If we didn't type (short list) and didn't find match, print warning
-            print(f"Warning: Value '{value}' not found in options for {label}. Options: {debug_options[:10]}...")
+            print(f"Warning: Value '{value}' not found in options for {label}.")
+            print(f"  Available options: {debug_options[:15]}...")
             await page.keyboard.press("Escape")
 
         except Exception as e:
@@ -930,7 +1383,7 @@ class GreenhouseApplier:
             print(f"File input not found: {selector}")
 
 
-    async def _submit_form(self, page: Page) -> dict[str, Any]:
+    async def _submit_form(self, page: Page, verification_callback: Any | None = None) -> dict[str, Any]:
         """Submit the form and wait for confirmation."""
         # Find submit button
         submit_btn = await page.query_selector("#submit_app")
@@ -942,17 +1395,78 @@ class GreenhouseApplier:
         if not submit_btn:
             return {"status": "error", "message": "Submit button not found."}
 
+        # Wait a moment for any validation scripts to run
+        await page.wait_for_timeout(1000)
         await submit_btn.click()
 
+        # Check for immediate verification modal
         try:
-            await page.wait_for_selector("#application_confirmation", timeout=15000)
-            return {"status": "success", "message": "Application submitted successfully."}
-        except Exception:
-            # Check if we're on a different confirmation page
-            current_url = page.url
-            if "thank" in current_url.lower() or "confirm" in current_url.lower():
-                return {"status": "success", "message": "Application submitted (confirmation page detected)."}
+            # Wait for either confirmation OR verification modal
+            # .email-verification is the class for the modal container
+            # #application_confirmation is success
+            
+            # We poll for both conditions
+            for _ in range(30): # 30 attempts, 1 sec each
+                # 1. Success
+                if await page.locator("#application_confirmation").count() > 0:
+                    return {"status": "success", "message": "Application submitted successfully."}
+                
+                # 2. Verification Modal
+                if await page.locator(".email-verification").count() > 0:
+                     print("EMAIL VERIFICATION REQUIRED")
+                     if not verification_callback:
+                         return {"status": "error", "message": "Email verification required but no callback provided."}
+                     
+                     # Call callback to get code
+                     code = await verification_callback()
+                     if not code or len(code) != 8:
+                         return {"status": "error", "message": "Invalid verification code provided."}
+                     
+                     # Fill inputs
+                     print(f"Filling verification code: {code}")
+                     inputs = await page.locator(".email-verification__wrapper input").all()
+                     for idx, char in enumerate(code):
+                         if idx < len(inputs):
+                             await inputs[idx].fill(char)
+                             await page.wait_for_timeout(50)
+                     
+                     # Wait a moment
+                     await page.wait_for_timeout(500)
+
+                     # Click Verify/Submit button in modal
+                     # Try generic button search within the verification container
+                     verify_btn = page.locator(".email-verification button, #email-verification-submit, button:has-text('Verify'), button:has-text('Submit Code')").first
+                     if await verify_btn.count() > 0 and await verify_btn.is_visible():
+                         print("Clicking verify button...")
+                         await verify_btn.click()
+                     else:
+                         print("Verify button not found, assuming auto-submit or using main submit...")
+                         
+                         # Fallback: Maybe the main submit button needs to be clicked again? 
+                         # User said "another submit has to be pressed". 
+                         # Often the modal has its own button. If not found, we might need to re-click the main #submit_app button?
+                         # Let's try re-clicking the main submit button if the modal doesn't have one
+                         if submit_btn and await submit_btn.is_visible():
+                             print("Re-clicking main submit button...")
+                             await submit_btn.click()
+
+                     # Wait for post-verification submit check
+                     await page.wait_for_timeout(2000)
+                     # Loop will continue to check for confirmation
+                
+                # Check URL changes (confirmation page)
+                current_url = page.url
+                if "thank" in current_url.lower() or "confirm" in current_url.lower():
+                     return {"status": "success", "message": "Application submitted (confirmation page detected)."}
+
+                await page.wait_for_timeout(1000)
+            
+            # Timeout
             return {"status": "unknown", "message": "Submit clicked but confirmation not detected."}
+            
+        except Exception as e:
+            print(f"Error during submission check: {e}")
+            return {"status": "error", "message": str(e)}
 
     # Legacy method for backwards compatibility
     async def apply(

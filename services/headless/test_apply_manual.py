@@ -1,42 +1,46 @@
 import asyncio
 import os
 import json
+import argparse
 from dotenv import load_dotenv
 from app.applying.greenhouse import GreenhouseApplier
 from app.db import upsert_user, get_user, close_database
+from playwright.async_api import async_playwright
 
 # Load environment variables from .env
 load_dotenv()
 
 URLS = [
-    "https://job-boards.greenhouse.io/tlatechinc/jobs/4074977009?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/roo/jobs/5047408008?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/galileofinancialtechnologies/jobs/6517406003?gh_src=my.greenhouse.search",
-    "https://job-boards.eu.greenhouse.io/lotusworks/jobs/4746237101?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/redwoodmaterials/jobs/5737879004?gh_jid=5737879004&gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/willowtree/jobs/8364172002?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/grvty/jobs/4091559009?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/sirenopt/jobs/4090525009?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/upwork/jobs/7565868003?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/cartesiansystems/jobs/4076723009?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/dynetherapeutics/jobs/5748627004?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/komodohealth/jobs/8363298002?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/checkr/jobs/7342475?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/checkr/jobs/7342475?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/phizenix/jobs/5058878008?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/atomicmachines/jobs/4093522009?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/remotecom/jobs/7579312003?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/lexingtonmedical/jobs/5057076008?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/formativgroup/jobs/4093476009?gh_src=my.greenhouse.search",
-    "https://job-boards.greenhouse.io/atomicmachines/jobs/4092512009?gh_src=my.greenhouse.search",
+    
 ]
 
 RESULTS_FILE = "manual_test_results.json"
+DOWNLOAD_DIR = "test_the_main_ones"
+
+async def download_page_content(url, output_path):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url)
+        # Wait for form to load
+        try:
+            await page.wait_for_selector("form", timeout=10000)
+        except:
+            pass
+        content = await page.content()
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        await browser.close()
 
 async def main():
-    # 0. Ensure Fixtures Exist
+    parser = argparse.ArgumentParser(description="Test Greenhouse application filling.")
+    parser.add_argument("--just_download", action="store_true", help="Download HTML and plan only, do not fill interactively.")
+    args = parser.parse_args()
+
+    # 0. Ensure Fixtures and Directories Exist
     fixtures_dir = os.path.join(os.getcwd(), "tests", "fixtures")
     os.makedirs(fixtures_dir, exist_ok=True)
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     resume_path = os.path.join(fixtures_dir, "dummy_resume.pdf")
     
     if not os.path.exists(resume_path):
@@ -76,7 +80,8 @@ async def main():
         "veteran_status": "I am not a protected veteran",
         "disability": "I do not have a disability",
         "authorization": "I am authorized to work in this country for any employer",
-        "sponsorship": "I do not require sponsorship"
+        "sponsorship": "I do not require sponsorship",
+        "salary": "Negotiable based on total compensation"
     }
     
     # 2. Upsert User to DB
@@ -108,17 +113,18 @@ async def main():
 
     # Initialize results list
     test_results = []
-    if os.path.exists(RESULTS_FILE):
+    if os.path.exists(RESULTS_FILE) and not args.just_download:
         try:
             with open(RESULTS_FILE, "r") as f:
                 test_results = json.load(f)
         except:
             pass
     
-    processed_urls = {res["url"] for res in test_results}
+    processed_urls = {res["url"] for res in test_results} if not args.just_download else set()
 
     # 5. Initialize Applier
-    applier = GreenhouseApplier(headless=False)
+    # Use headless=True if just downloading to be faster/less intrusive
+    applier = GreenhouseApplier(headless=args.just_download)
     
     try:
         for idx, url in enumerate(URLS):
@@ -131,6 +137,17 @@ async def main():
             print(f"==================================================")
             
             try:
+                # Determine filenames
+                # Sanitize URL for filename
+                safe_name = "".join([c if c.isalnum() else "_" for c in url.split("?")[0][-20:]])
+                html_path = os.path.join(DOWNLOAD_DIR, f"job_{idx+1}_{safe_name}.html")
+                json_path = os.path.join(DOWNLOAD_DIR, f"plan_{idx+1}_{safe_name}.json")
+
+                if args.just_download:
+                    print(f"Downloading content to {html_path}...")
+                    # Download HTML independently to capture raw state
+                    await download_page_content(url, html_path)
+
                 print(f"--- PHASE 1: ANALYSIS ---")
                 analysis = await applier.analyze_form(
                     url, 
@@ -142,11 +159,12 @@ async def main():
                 if analysis.get("status") == "error":
                     print(f"Analysis failed: {analysis.get('message')}")
                     # Record failure
-                    test_results.append({
-                        "url": url,
-                        "success": False,
-                        "reason": f"Analysis failed: {analysis.get('message')}"
-                    })
+                    if not args.just_download:
+                        test_results.append({
+                            "url": url,
+                            "success": False,
+                            "reason": f"Analysis failed: {analysis.get('message')}"
+                        })
                     continue
 
                 fields = analysis.get("fields", [])
@@ -175,21 +193,17 @@ async def main():
                     suggestion = field.get("recommended_value")
                     field["final_value"] = suggestion
 
+                if args.just_download:
+                    print(f"Saving analysis plan to {json_path}...")
+                    with open(json_path, "w", encoding="utf-8") as f:
+                        json.dump(analysis, f, indent=2, default=str)
+                    print("Skipping fill phase (just_download mode).")
+                    continue
+
                 print(f"--- PHASE 3: FILLING FORM ---")
                 # We use a custom call here that waits for user input BEFORE closing
-                # Note: fill_and_submit with keep_open=True usually returns immediately but leaves browser open.
-                # However, for this test script, we want to pause execution here to let user inspect.
                 
-                # To achieve "wait for user input then close", we can't rely solely on keep_open=True 
-                # because we need to eventually close it to start the next one.
-                # So we run fill_and_submit(..., keep_open=True) and then manually close context?
-                # No, GreenhouseApplier manages its own context/page in instance variables.
-                
-                # Actually, GreenhouseApplier.fill_and_submit opens a NEW context/page every time.
-                # If keep_open=True, it doesn't close it.
-                # We need to access that page or just prompt user, then manually close if possible?
-                # The Applier doesn't expose a 'close_last_page' method easily, but we can just let it be.
-                # Playwright allows multiple contexts.
+                failed_html_path = os.path.join(DOWNLOAD_DIR, f"failed_job_{idx+1}_{safe_name}.html")
                 
                 result = await applier.fill_and_submit(
                     url, 
@@ -198,7 +212,8 @@ async def main():
                     job_description=job_description,
                     expected_fingerprint=None,
                     submit=False,
-                    keep_open=True
+                    keep_open=True,
+                    output_path=failed_html_path
                 )
                 
                 print("Form filled. Please check the browser window.")
@@ -208,6 +223,13 @@ async def main():
                 notes = ""
                 if not success:
                     notes = input("What was wrong? (optional): ").strip()
+                else:
+                    # If successful, remove the debug HTML
+                    if os.path.exists(failed_html_path):
+                        try:
+                            os.remove(failed_html_path)
+                        except:
+                            pass
                 
                 test_results.append({
                     "url": url,
@@ -220,27 +242,22 @@ async def main():
                     json.dump(test_results, f, indent=2)
 
                 print("Moving to next URL...")
-                # We should try to close the page to avoid clutter, 
-                # but applier doesn't return the page object directly in fill_and_submit result.
-                # Assuming the user manually closes or we rely on OS cleaning up eventually?
-                # Ideally we modify Applier or just let it spawn new windows. 
-                # For 20 URLs, 20 windows might crash the machine.
-                
-                # Hack: We can close the browser instance entirely and restart it?
-                # Or just accessing applier.browser if it was exposed?
-                # Looking at Applier code (not provided fully but usually has self.browser)
                 
             except Exception as e:
                 print(f"Error processing {url}: {e}")
-                test_results.append({
-                    "url": url,
-                    "success": False,
-                    "reason": str(e)
-                })
+                if not args.just_download:
+                    test_results.append({
+                        "url": url,
+                        "success": False,
+                        "reason": str(e)
+                    })
 
     finally:
         await close_database()
-        print(f"\nTest complete. Results saved to {RESULTS_FILE}")
+        if not args.just_download:
+            print(f"\nTest complete. Results saved to {RESULTS_FILE}")
+        else:
+            print(f"\nDownload complete. Files saved to {DOWNLOAD_DIR}/")
 
 if __name__ == "__main__":
     asyncio.run(main())
