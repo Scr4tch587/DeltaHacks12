@@ -4,9 +4,10 @@ aiohttp>=3.9.0  # For async/concurrent HTTP requests
 openai>=1.0.0  # For OpenRouter compatibility
 fish-audio-sdk>=1.0.0  # Official Fish Audio SDK
 
-# Speech recognition for word-level timestamps
-openai-whisper>=20231117
-stable-ts>=2.0.0  # For word-level timestamps with Whisper
+# Speech recognition for word-level timestamps (OPTIONAL - large dependency ~1.5GB)
+# Uncomment these for precise word-level subtitles:
+# openai-whisper>=20231117
+# stable-ts>=2.0.0
 
 # Video processing
 # Uses FFmpeg directly via subprocess (no Python dependencies needed)

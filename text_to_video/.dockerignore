@@ -1,0 +1,52 @@
+# Ignore cache and output directories
+cache/
+output/
+hls_output/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+
+# Generated media (don't copy into image)
+*.mp3
+*.mp4
+*.wav
+*.m3u8
+*.ts
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docs (not needed in runtime)
+*.md
+!README.md
+
+# Tests
+test_*.py
+tests/
+
+# Git
+.git/
+.gitignore
+
+# Dev files
+.env
+.env.*
