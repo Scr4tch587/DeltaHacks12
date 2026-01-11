@@ -14,7 +14,7 @@ VULTR_ACCESS_KEY = os.getenv("VULTR_ACCESS_KEY", "")
 VULTR_SECRET_KEY = os.getenv("VULTR_SECRET_KEY", "")
 VULTR_BUCKET = os.getenv("VULTR_BUCKET", "")
 S3_ADDRESSING_STYLE = os.getenv("S3_ADDRESSING_STYLE", "path").lower()  # path or virtual
-PRESIGN_EXPIRES_SECONDS = int(os.getenv("PRESIGN_EXPIRES_SECONDS", os.getenv("PRESIGNED_URL_EXPIRY", "3600")))  # Default 1 hour
+PRESIGN_EXPIRES_SECONDS = int(os.getenv("PRESIGN_EXPIRES_SECONDS", os.getenv("PRESIGNED_URL_EXPIRY", "7200")))  # Default 2 hours (increased for latency reduction)
 
 # S3 key prefix - files are stored under bucket-name/hls/ in this setup
 # If your files are at root level (just hls/), set this to empty string

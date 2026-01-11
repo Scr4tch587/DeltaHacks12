@@ -87,15 +87,18 @@ def resolve_hls_uri(playlist_key: str, uri_line: str, base_prefix: str = "hls/")
     return resolved
 
 
-def rewrite_playlist(text: str, playlist_key: str, api_base: str) -> str:
+def rewrite_playlist(text: str, playlist_key: str, api_base: str, presigned_url_generator=None) -> str:
     """
-    Rewrite an HLS playlist to point URIs to our API gateway.
+    Rewrite an HLS playlist to point URIs to our API gateway or presigned URLs.
     
     Args:
         text: Playlist content as UTF-8 string
         playlist_key: S3 key of the playlist (e.g., "hls/abc/master.m3u8")
         api_base: Base URL for the API (e.g., "http://localhost:8002" or "")
                   If empty, uses relative paths
+        presigned_url_generator: Optional function(key: str) -> str that generates presigned URLs
+                                If provided, segment URIs will be replaced with presigned URLs directly
+                                (latency optimization - eliminates redirect overhead)
     
     Returns:
         Rewritten playlist content
@@ -132,11 +135,23 @@ def rewrite_playlist(text: str, playlist_key: str, api_base: str) -> str:
                         
                         # Determine endpoint based on extension
                         if resolved_key.endswith('.m3u8'):
+                            # For playlists in tags, use API gateway
                             new_uri = f'{api_base}/hls/{resolved_key}' if api_base else f'/hls/{resolved_key}'
+                            return f'{uri_attr}"{new_uri}"'
                         else:
-                            new_uri = f'{api_base}/hls-seg/{resolved_key}' if api_base else f'/hls-seg/{resolved_key}'
-                        
-                        return f'{uri_attr}"{new_uri}"'
+                            # For segments in tags, use presigned URLs if generator is provided
+                            if presigned_url_generator:
+                                try:
+                                    presigned_url = presigned_url_generator(resolved_key)
+                                    return f'{uri_attr}"{presigned_url}"'
+                                except Exception:
+                                    # Fallback to redirect endpoint
+                                    new_uri = f'{api_base}/hls-seg/{resolved_key}' if api_base else f'/hls-seg/{resolved_key}'
+                                    return f'{uri_attr}"{new_uri}"'
+                            else:
+                                # Fallback: use redirect endpoint
+                                new_uri = f'{api_base}/hls-seg/{resolved_key}' if api_base else f'/hls-seg/{resolved_key}'
+                                return f'{uri_attr}"{new_uri}"'
                     except ValueError:
                         # If resolution fails, keep original
                         return match.group(0)
@@ -155,11 +170,23 @@ def rewrite_playlist(text: str, playlist_key: str, api_base: str) -> str:
                 
                 # Determine endpoint based on extension
                 if resolved_key.endswith('.m3u8'):
+                    # For playlists, always use API gateway (they need to be rewritten recursively)
                     new_uri = f'{api_base}/hls/{resolved_key}' if api_base else f'/hls/{resolved_key}'
+                    rewritten_lines.append(new_uri)
                 else:
-                    new_uri = f'{api_base}/hls-seg/{resolved_key}' if api_base else f'/hls-seg/{resolved_key}'
-                
-                rewritten_lines.append(new_uri)
+                    # For segments, use presigned URLs directly if generator is provided (latency optimization)
+                    if presigned_url_generator:
+                        try:
+                            presigned_url = presigned_url_generator(resolved_key)
+                            rewritten_lines.append(presigned_url)
+                        except Exception as e:
+                            # Fallback to redirect endpoint if presigned URL generation fails
+                            new_uri = f'{api_base}/hls-seg/{resolved_key}' if api_base else f'/hls-seg/{resolved_key}'
+                            rewritten_lines.append(new_uri)
+                    else:
+                        # Fallback: use redirect endpoint
+                        new_uri = f'{api_base}/hls-seg/{resolved_key}' if api_base else f'/hls-seg/{resolved_key}'
+                        rewritten_lines.append(new_uri)
             except ValueError as e:
                 # If resolution fails (e.g., path traversal), log and keep original
                 # In production, you might want to log this as a warning

@@ -289,23 +289,34 @@ async def get_hls_playlist(key: str):
         # Get API base URL (empty string for relative paths, or PUBLIC_BASE_URL if set)
         api_base = PUBLIC_BASE_URL.rstrip('/') if PUBLIC_BASE_URL else ""
         
-        # Rewrite the playlist
-        rewritten = rewrite_playlist(playlist_text, key, api_base)
+        # Create presigned URL generator function for latency optimization
+        # This embeds presigned URLs directly in playlists, eliminating redirect overhead
+        from app.s3_client import PRESIGN_EXPIRES_SECONDS
+        def generate_presigned_for_segment(segment_key: str) -> str:
+            return get_presigned_url(segment_key, expires_in=PRESIGN_EXPIRES_SECONDS)
+        
+        # Rewrite the playlist with presigned URL generation enabled
+        rewritten = rewrite_playlist(playlist_text, key, api_base, presigned_url_generator=generate_presigned_for_segment)
         
         # Count rewritten URIs for logging
         original_lines = playlist_text.split('\n')
         rewritten_lines = rewritten.split('\n')
         uri_count = sum(1 for line in original_lines if line.strip() and not line.strip().startswith('#'))
         
-        # Log
-        print(f"[HLS] Served playlist: key={key}, size={len(playlist_content)} bytes, rewritten_uris={uri_count}")
+        # Count how many presigned URLs were embedded (for logging)
+        presigned_count = sum(1 for line in rewritten_lines if 'vultrobjects.com' in line or 'X-Amz-Signature' in line)
         
-        # Return with correct headers
+        # Log
+        print(f"[HLS] Served playlist: key={key}, size={len(playlist_content)} bytes, segments={uri_count}, presigned_urls={presigned_count}")
+        
+        # Return with cache headers (playlists can be cached briefly since they contain presigned URLs)
+        # Cache for 5 minutes - this is safe because presigned URLs expire after 2 hours
         return Response(
             content=rewritten,
             media_type="application/vnd.apple.mpegurl",
             headers={
-                "Cache-Control": "no-store",
+                "Cache-Control": "public, max-age=300",  # Cache for 5 minutes (presigned URLs valid for 2 hours)
+                "Access-Control-Allow-Origin": "*",
             }
         )
     
@@ -318,16 +329,17 @@ async def get_hls_playlist(key: str):
 @app.get("/hls-seg/{key:path}")
 async def get_hls_segment(key: str):
     """
-    Generate presigned URL and redirect to segment.
+    Generate presigned URL and redirect to segment (FALLBACK ENDPOINT).
     
-    This endpoint generates a presigned URL for an HLS segment and redirects
-    the client to download it directly from Vultr Object Storage.
+    NOTE: This endpoint is kept for backward compatibility and as a fallback.
+    Modern playlists embed presigned URLs directly, eliminating redirect latency.
+    This endpoint should only be hit if presigned URLs in playlists expire.
     
     Args:
         key: S3 key path (e.g., "hls/abc123/720p/seg_000.ts")
     
     Returns:
-        307 redirect to presigned URL
+        302 redirect to presigned URL
     """
     # Security: ensure key starts with hls/
     if not key.startswith("hls/"):
@@ -362,7 +374,10 @@ async def get_hls_segment(key: str):
 @app.head("/hls-seg/{key:path}")
 async def head_hls_segment(key: str):
     """
-    HEAD request for HLS segment (for debugging).
+    HEAD request for HLS segment (FALLBACK ENDPOINT - for debugging).
+    
+    NOTE: This endpoint is kept for backward compatibility and debugging.
+    Modern playlists embed presigned URLs directly, eliminating the need for this endpoint.
     
     Args:
         key: S3 key path
