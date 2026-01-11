@@ -170,12 +170,17 @@ async function fetchVideosFromSemanticSearch(resetIfEmpty: boolean = false): Pro
     console.log(`Found ${videoIds.length} video IDs (greenhouse_ids), fetching HLS URLs...`);
     
     // Step 2: For each video_id (greenhouse_id), call video service to get HLS playback URL
+    console.log(`📹 Video Service URL: ${VIDEO_SERVICE_URL}`);
+    console.log(`📹 Fetching HLS URLs for ${videoIds.length} videos...`);
+    
     const videoUrls = await Promise.all(
       videoIds.map(async (videoId: string) => {
+        const videoUrl = `${VIDEO_SERVICE_URL}/video/${videoId}`;
+        console.log(`  🔍 Fetching HLS URL for video ${videoId}`);
+        console.log(`     URL: ${videoUrl}`);
+        
+        const startTime = Date.now();
         try {
-          const videoUrl = `${VIDEO_SERVICE_URL}/video/${videoId}`;
-          console.log(`Fetching HLS URL for video ${videoId}`);
-          
           const videoResponse = await fetch(videoUrl, {
             method: 'GET',
             headers: {
@@ -183,23 +188,46 @@ async function fetchVideosFromSemanticSearch(resetIfEmpty: boolean = false): Pro
             },
           });
           
+          const elapsed = Date.now() - startTime;
+          console.log(`     ✅ Response received in ${elapsed}ms`);
+          console.log(`     Status: ${videoResponse.status} ${videoResponse.statusText}`);
+          
           if (!videoResponse.ok) {
-            console.error(`Failed to fetch HLS URL for video ${videoId}:`, videoResponse.status);
+            console.error(`     ❌ HTTP error ${videoResponse.status} for video ${videoId}`);
+            // Try to get error details
+            try {
+              const errorText = await videoResponse.text();
+              console.error(`     Error body: ${errorText.substring(0, 200)}`);
+            } catch (e) {
+              console.error(`     Could not read error response`);
+            }
             return null;
           }
           
           const videoData = await videoResponse.json();
+          console.log(`     Response data:`, JSON.stringify(videoData).substring(0, 150));
+          
           // Extract playback.url from response
           const playbackUrl = videoData.playback?.url || videoData.url;
           
           if (!playbackUrl) {
-            console.warn(`No playback URL found for video ${videoId}`);
+            console.warn(`     ⚠️  No playback URL found for video ${videoId}`);
+            console.warn(`     Available keys:`, Object.keys(videoData));
             return null;
           }
           
+          console.log(`     ✅ Got playback URL: ${playbackUrl}`);
           return playbackUrl;
-        } catch (error) {
-          console.error(`Error fetching HLS URL for video ${videoId}:`, error);
+        } catch (error: any) {
+          const elapsed = Date.now() - startTime;
+          console.error(`     ❌ Error after ${elapsed}ms for video ${videoId}:`);
+          console.error(`     Error type: ${error?.name || 'Unknown'}`);
+          console.error(`     Error message: ${error?.message || String(error)}`);
+          console.error(`     URL attempted: ${videoUrl}`);
+          console.error(`     This usually means:`);
+          console.error(`       - Video service is not running on ${VIDEO_SERVICE_URL}`);
+          console.error(`       - Video service endpoint /video/${videoId} doesn't exist`);
+          console.error(`       - Network/firewall blocking access to port 8002`);
           return null;
         }
       })
