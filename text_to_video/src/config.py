@@ -189,7 +189,7 @@ CAPTION_STROKE_COLOR = "black"
 
 # Title Configuration
 TITLE_DURATION = 2.5  # Seconds to display title
-TITLE_FONT_SIZE = 150
+TITLE_FONT_SIZE = 100
 TITLE_FONT_FAMILY = "Nunito"
 TITLE_FONT_WEIGHT = 900  # Black (400=normal, 700=bold, 900=black)
 TITLE_COLOR = "white"
