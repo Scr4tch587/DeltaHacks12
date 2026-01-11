@@ -18,12 +18,17 @@ venv/
 .venv/
 ENV/
 
-# Generated media (don't copy into image)
-*.mp3
-*.mp4
-*.wav
-*.m3u8
-*.ts
+# Generated media in output directories (don't copy into image)
+# Note: Keep assets/backgrounds/*.mp4 and assets/characters/* for video generation
+cache/**/*.mp3
+cache/**/*.mp4
+cache/**/*.wav
+cache/**/*.m3u8
+cache/**/*.ts
+output/**/*.mp4
+hls_output/**/*.m3u8
+hls_output/**/*.ts
+mp4_output/**/*.mp4
 
 # IDE and editor files
 .vscode/
