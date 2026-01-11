@@ -8,8 +8,11 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Text,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +23,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resumeFile, setResumeFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
   const { login, register } = useAuth();
   const router = useRouter();
 
@@ -28,7 +32,27 @@ export default function LoginScreen() {
   const tintColor = useThemeColor({}, 'tint');
   const borderColor = useThemeColor({}, 'tabIconDefault');
 
+  const handlePickResume = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        copyToCacheDirectory: true,
+      });
+      
+      if (!result.canceled) {
+        setResumeFile(result);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  };
+
+  const handleRemoveResume = () => {
+    setResumeFile(null);
+  };
+
   const handleSubmit = async () => {
+    // Validate only email and password (resume is ignored)
     if (!email.trim() || !password.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -41,14 +65,21 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
+      // Clear resume file before submission (resume is not sent to backend)
+      if (!isLogin) {
+        setResumeFile(null);
+      }
+      
       if (isLogin) {
         await login(email.trim(), password);
       } else {
+        // Resume file is ignored - only email and password are sent
         await register(email.trim(), password);
       }
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'An error occurred');
+      const errorMessage = error?.message || String(error) || 'An error occurred';
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -97,6 +128,36 @@ export default function LoginScreen() {
               editable={!isLoading}
             />
           </View>
+
+          {/* Add Resume button - only shown when creating account */}
+          {!isLogin && (
+            <View style={styles.resumeContainer}>
+              {resumeFile && !resumeFile.canceled && resumeFile.assets && resumeFile.assets[0] ? (
+                <View style={[styles.resumeSelected, { borderColor }]}>
+                  <View style={styles.resumeInfo}>
+                    <Ionicons name="document-text" size={20} color={tintColor} />
+                    <Text style={[styles.resumeFileName, { color: textColor }]} numberOfLines={1}>
+                      {resumeFile.assets[0].name}
+                    </Text>
+                  </View>
+                  <Pressable onPress={handleRemoveResume} disabled={isLoading}>
+                    <Ionicons name="close-circle" size={24} color={borderColor} />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={[styles.resumeButton, { borderColor }, isLoading && styles.resumeButtonDisabled]}
+                  onPress={handlePickResume}
+                  disabled={isLoading}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color={tintColor} />
+                  <Text style={[styles.resumeButtonText, { color: tintColor }]}>
+                    Add Resume
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
 
           <Pressable
             style={[styles.button, { backgroundColor: tintColor }, isLoading && styles.buttonDisabled]}
@@ -182,5 +243,44 @@ const styles = StyleSheet.create({
   switchText: {
     fontSize: 14,
     opacity: 0.7,
+  },
+  resumeContainer: {
+    marginBottom: 16,
+  },
+  resumeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  resumeButtonDisabled: {
+    opacity: 0.6,
+  },
+  resumeButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  resumeSelected: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  resumeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  resumeFileName: {
+    fontSize: 16,
+    flex: 1,
   },
 });

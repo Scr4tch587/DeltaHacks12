@@ -68,7 +68,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         let errorMessage = 'Login failed';
         try {
           const errorData = await response.json();
-          errorMessage = errorData.detail || errorMessage;
+          const detail = errorData.detail;
+          // Ensure errorMessage is always a string
+          if (typeof detail === 'string') {
+            errorMessage = detail;
+          } else if (Array.isArray(detail) && detail.length > 0) {
+            // Handle validation errors array
+            errorMessage = detail.map((err: any) => err?.msg || err?.message || String(err)).join(', ');
+          } else if (detail && typeof detail === 'object') {
+            // Try to extract a meaningful message
+            errorMessage = detail.message || detail.msg || JSON.stringify(detail);
+          }
         } catch {
           // If JSON parsing fails, try to get text response
           try {
@@ -121,7 +131,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         let errorMessage = 'Registration failed';
         try {
           const errorData = await response.json();
-          errorMessage = errorData.detail || errorMessage;
+          const detail = errorData.detail;
+          // Ensure errorMessage is always a string
+          if (typeof detail === 'string') {
+            errorMessage = detail;
+          } else if (Array.isArray(detail) && detail.length > 0) {
+            // Handle validation errors array
+            errorMessage = detail.map((err: any) => err?.msg || err?.message || String(err)).join(', ');
+          } else if (detail && typeof detail === 'object') {
+            // Try to extract a meaningful message
+            errorMessage = detail.message || detail.msg || JSON.stringify(detail);
+          }
         } catch {
           // If JSON parsing fails, try to get text response
           try {
