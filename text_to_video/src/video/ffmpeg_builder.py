@@ -25,19 +25,44 @@ class FFmpegCommandBuilder:
     def __init__(self):
         pass
 
-    def get_background_video(self) -> Path:
-        """Find and randomly select a background video file."""
+    def get_background_video(self, duration: float = 60.0) -> Path:
+        """Find and randomly select a background video file, or generate a solid color background."""
         video_files = list(BACKGROUNDS_DIR.glob("*.mp4")) + \
                      list(BACKGROUNDS_DIR.glob("*.mov")) + \
                      list(BACKGROUNDS_DIR.glob("*.avi"))
 
-        if not video_files:
-            raise FileNotFoundError(
-                f"No background video found in {BACKGROUNDS_DIR}"
-            )
-
-        # Randomly select a background video
-        return random.choice(video_files)
+        if video_files:
+            # Randomly select a background video
+            return random.choice(video_files)
+        
+        # No background video found - generate a solid color background
+        print("No background video found, generating solid color background...")
+        BACKGROUNDS_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Generate a gradient/animated background using FFmpeg
+        background_path = BACKGROUNDS_DIR / "generated_background.mp4"
+        
+        if not background_path.exists():
+            # Create a dark gradient animated background
+            # Uses FFmpeg's color and gradient filters
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "lavfi",
+                "-i", f"color=c=0x1a1a2e:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:d={duration}:r={VIDEO_FPS}",
+                "-vf", "format=yuv420p",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "23",
+                background_path
+            ]
+            
+            try:
+                subprocess.run(cmd, check=True, capture_output=True)
+                print(f"Generated background: {background_path}")
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Failed to generate background: {e.stderr.decode()}")
+        
+        return background_path
 
     def concatenate_audio(self, audio_files: List[Dict], output_dir: Path) -> Path:
         """Concatenate all audio files into one with volume normalization."""
