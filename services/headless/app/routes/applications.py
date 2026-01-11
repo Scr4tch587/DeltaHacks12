@@ -350,7 +350,7 @@ async def submit_application(
 
     # Fill and submit
     # DEBUG: Set headless=False to see browser during testing
-    applier = GreenhouseApplier(headless=False)
+    applier = GreenhouseApplier(headless=True)
 
     # Define verification callback for server console interaction
     async def server_verification_callback():
