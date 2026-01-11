@@ -823,9 +823,9 @@ class GreenhouseApplier:
         import os
         from pathlib import Path
         
-        # Relative path from this module: app/applying/greenhouse.py -> data/resumes/...
-        # Go up 3 levels (applying -> app -> headless) then into data/resumes
-        module_dir = Path(__file__).parent.parent.parent
+        # Relative path from this module: app/applying/greenhouse.py -> app/data/resumes/...
+        # Go up 2 levels (applying -> app) then into data/resumes
+        module_dir = Path(__file__).parent.parent
         hardcoded_path = module_dir / "data" / "resumes" / "thomasariogpt_gmail_com" / "resume.pdf"
         
         # Use hardcoded path if it exists, otherwise try the provided path
