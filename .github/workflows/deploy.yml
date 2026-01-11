@@ -37,9 +37,10 @@ jobs:
             echo 'Ensuring Docker is running...'
             sudo systemctl start docker || true
             echo 'Building and deploying services...'
-            docker compose -f docker-compose.prod.yml down || true
+            docker compose -f docker-compose.prod.yml down --remove-orphans || true
             docker compose -f docker-compose.prod.yml build --no-cache
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
             echo 'Waiting for services to start...'
             sleep 5
             echo 'Service status:'
