@@ -316,9 +316,10 @@ def process_job(job: dict, db, s3_client) -> bool:
         
         create_video_document(videos, job, upload_result)
         
-        # Step 5: Mark job as ready
-        update_job_status(generation_jobs, job_id, "ready")
-        print(f"  Job {job_id} completed successfully!")
+        # Step 5: Delete the generation job (video now exists in videos collection)
+        # No need to keep completed jobs - they just take up space and block re-queuing
+        generation_jobs.delete_one({"job_id": job_id})
+        print(f"  Job {job_id} completed successfully! (generation job deleted)")
         
         # Cleanup temp files
         temp_dir = os.path.join(TEMP_OUTPUT_DIR, output_video_id)
@@ -350,9 +351,9 @@ def process_job(job: dict, db, s3_client) -> bool:
             )
             print(f"  Queued for retry ({retry_count + 1}/{MAX_RETRIES})")
         else:
-            # Mark as failed
-            update_job_status(generation_jobs, job_id, "failed", error_msg)
-            print(f"  Marked as failed (max retries exceeded)")
+            # Delete the failed job after max retries (don't block future attempts)
+            generation_jobs.delete_one({"job_id": job_id})
+            print(f"  Deleted failed job after max retries (error: {error_msg[:100]})")
         
         return False
 
