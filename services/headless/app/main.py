@@ -12,10 +12,16 @@ from app.db import close_database, cleanup_stuck_analyzing, expire_stale_applica
 from app.fetching.scraper import run_scraper
 from app.routes.applications import router as applications_router
 
-# Load environment variables from project root (2 levels up from this file)
-# services/headless/app/main.py -> services/headless -> services -> DeltaHacks12
-project_root = Path(__file__).parent.parent.parent.parent
-load_dotenv(project_root / ".env")
+# Load environment variables
+# Priority: 1) Already set env vars (Docker Compose), 2) Local .env, 3) Project root .env
+local_env = Path(__file__).parent.parent / ".env"  # services/headless/.env
+project_env = Path(__file__).parent.parent.parent.parent / ".env"  # DeltaHacks12/.env
+
+if local_env.exists():
+    load_dotenv(local_env)
+elif project_env.exists():
+    load_dotenv(project_env)
+# If neither exists, rely on environment variables (Docker Compose sets them)
 
 # Load environment variables
 MONGODB_URI = os.getenv("MONGODB_URI", "")
