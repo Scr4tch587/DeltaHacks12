@@ -188,7 +188,7 @@ class GreenhouseApplier:
                             }
 
                     # Fill all known fields
-                    await self._fill_form_fields(page, fields)
+                    await self._fill_form_fields(page, fields, user_profile=user_profile)
 
                     # --- SECOND PASS: CHECK FOR NEW FIELDS (Conditional Logic) ---
                     if user_profile:
@@ -218,7 +218,7 @@ class GreenhouseApplier:
                                     nf["final_value"] = nf.get("recommended_value")
                             
                             # Fill new fields
-                            await self._fill_form_fields(page, new_fields)
+                            await self._fill_form_fields(page, new_fields, user_profile=user_profile)
                     # -------------------------------------------------------------
 
                     result = {"status": "dry_run", "message": "Form filled, submit skipped."}
@@ -640,21 +640,52 @@ class GreenhouseApplier:
             print(f"AI error for field {field['label']}: {e}")
             field["confidence"] = 0.0
 
-    async def _fill_form_fields(self, page: Page, fields: list[dict[str, Any]]):
+    async def _fill_form_fields(self, page: Page, fields: list[dict[str, Any]], user_profile: dict[str, Any] | None = None):
         """Fill all form fields with their final values."""
+        
+        # 1. Determine Country Hint for Phone Fields
+        country_hint = None
+        explicit_country_field_exists = False
+        
+        for field in fields:
+            label = field.get("label", "").lower()
+            val = field.get("final_value") or field.get("recommended_value")
+            if "country" in label and val:
+                # Extract name before any code: "United States +1" -> "United States"
+                country_hint = val.split('+')[0].strip()
+                explicit_country_field_exists = True
+                break
+        
+        if not country_hint and user_profile:
+            # Try to infer from location
+            loc = user_profile.get("location", "").lower()
+            if "usa" in loc or "united states" in loc:
+                country_hint = "United States"
+            elif "canada" in loc:
+                country_hint = "Canada"
+            elif "uk" in loc or "united kingdom" in loc:
+                country_hint = "United Kingdom"
+        
+        if country_hint:
+            print(f"Debug: Country hint for phone fields: {country_hint} (Explicit field: {explicit_country_field_exists})")
+
+        # 2. Fill fields
         for field in fields:
             value = field.get("final_value") or field.get("recommended_value")
-            
-            # Debug log
-            if value:
-                print(f"Filling field '{field['label']}' (Type: {field['field_type']}) with value: '{str(value)[:50]}...'")
+            label = field.get("label")
             
             if not value:
+                if field.get("required"):
+                    print(f"Skipping required field with NO value: '{label}'")
+                else:
+                    # Optional field with no value
+                    pass
                 continue
 
+            print(f"Filling field '{label}' (Type: {field['field_type']}) with value: '{str(value)[:50]}...'")
+            
             selector = field.get("selector")
             field_type = field.get("field_type")
-            label = field.get("label")
 
             try:
                 if field_type == "file":
@@ -664,11 +695,18 @@ class GreenhouseApplier:
                 elif field_type == "select":
                     await self._fill_standard_select(page, selector, value)
                 else:
-                    await self._fill_text_field(page, selector, value)
+                    # Pass explicit_country_field_exists to avoid double-setting flag
+                    await self._fill_text_field(
+                        page, 
+                        selector, 
+                        value, 
+                        country_hint=country_hint, 
+                        skip_iti_flag=explicit_country_field_exists
+                    )
             except Exception as e:
-                print(f"Error filling {field['label']}: {e}")
+                print(f"Error filling {label}: {e}")
 
-    async def _fill_text_field(self, page: Page, selector: str, value: str):
+    async def _fill_text_field(self, page: Page, selector: str, value: str, country_hint: str | None = None, skip_iti_flag: bool = False):
         """Fill a text input or textarea."""
         if not selector:
             return
@@ -681,11 +719,37 @@ class GreenhouseApplier:
             is_phone = "phone" in selector.lower() or await locator.get_attribute("type") == "tel"
             
             if is_phone:
+                # Handle intl-tel-input (iti) dropdown if present
+                try:
+                    # Look for the iti container wrapping this input
+                    iti_container = page.locator(".iti").filter(has=locator).first
+                    if await iti_container.count() > 0:
+                        selected_country_btn = iti_container.locator(".iti__selected-country").first
+                        if await selected_country_btn.count() > 0:
+                            # Only attempt to change country if:
+                            # 1. We are NOT skipping flag (no separate country field)
+                            # 2. Value doesn't have a '+' prefix (which might imply full international format)
+                            # 3. We have a hint
+                            if not skip_iti_flag and not str(value).startswith("+") and country_hint:
+                                await selected_country_btn.click()
+                                await page.wait_for_timeout(300)
+                                
+                                # ITI usually has a search input in the dropdown
+                                search_input = page.locator(".iti__search-input").first
+                                if await search_input.count() > 0 and await search_input.is_visible():
+                                    await search_input.fill(country_hint)
+                                    await page.wait_for_timeout(500)
+                                    await page.keyboard.press("Enter")
+                                    await page.wait_for_timeout(300)
+                except Exception as e:
+                    print(f"Debug: Failed to set ITI country code: {e}")
+
                 await locator.click()
                 await locator.clear()
-                await locator.press_sequentially(value, delay=100)
+                # Use sequences for phone numbers to trigger any mask/formatting logic
+                await locator.press_sequentially(str(value), delay=50)
             else:
-                await locator.fill(value)
+                await locator.fill(str(value))
         else:
              print(f"Text field not found: {selector}")
 
