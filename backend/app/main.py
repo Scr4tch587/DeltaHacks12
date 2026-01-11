@@ -49,7 +49,7 @@ EMBEDDING_DIMENSION = 768
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 TARGET_COUNT = int(os.getenv("TARGET_COUNT", "5"))
 MAX_GENERATE_PER_REQUEST = int(os.getenv("MAX_GENERATE_PER_REQUEST", "5"))
-MAX_USER_CONCURRENT_JOBS = int(os.getenv("MAX_USER_CONCURRENT_JOBS", "2"))
+MAX_USER_CONCURRENT_JOBS = int(os.getenv("MAX_USER_CONCURRENT_JOBS", "5"))
 VECTOR_SEARCH_LIMIT = int(os.getenv("VECTOR_SEARCH_LIMIT", "20"))
 VECTOR_SEARCH_CANDIDATES = int(os.getenv("VECTOR_SEARCH_CANDIDATES", "50"))
 
@@ -857,14 +857,14 @@ async def enqueue_generation_job(
     if generation_jobs_collection is None:
         return None
     
-    # Check for existing job with same fingerprint + greenhouse_id
+    # Check for existing ACTIVE job with same greenhouse_id (queued or running)
+    # Don't block on completed jobs - only prevent duplicate active processing
     existing = await generation_jobs_collection.find_one({
-        "query_fingerprint": query_fingerprint,
         "greenhouse_id": greenhouse_id,
-        "status": {"$nin": ["failed"]}  # Allow retry if previously failed
+        "status": {"$in": ["queued", "running"]}
     })
     if existing:
-        print(f"  Skipping generation for {greenhouse_id} - job already exists")
+        print(f"  Skipping generation for {greenhouse_id} - job already in progress")
         return None
     
     # Check user's concurrent job limit
