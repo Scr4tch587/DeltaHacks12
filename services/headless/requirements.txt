@@ -8,3 +8,5 @@ apscheduler
 python-dotenv
 google-genai
 beautifulsoup4
+pydantic
+certifi
