@@ -17,6 +17,7 @@ import {
 } from "react-native";
 
 import { VideoView, useVideoPlayer } from "expo-video";
+import type { VideoPlayerStatus } from "expo-video";
 import { Audio } from "expo-av";
 import { ReelOverlay } from "../../components/ReelOverlay";
 import { OTPInputModal } from "../../components/OTPInputModal";
@@ -257,6 +258,7 @@ const VideoWrapper = ({
 
   // Track if this video should be playing
   const shouldPlay = visibleIndex === index && !pauseOverride;
+  const [playerStatus, setPlayerStatus] = useState<VideoPlayerStatus>("idle");
 
   // Always create player with real URL - the player handles lazy loading internally
   const videoUrl = allVideos[index].videoUrl;
@@ -265,6 +267,20 @@ const VideoWrapper = ({
     player.loop = true;
     player.muted = false;
   });
+  useEffect(() => {
+    const subscription = player.addListener("statusChange", (payload) => {
+      setPlayerStatus(payload.status);
+      if (payload.status === "error") {
+        console.warn(`[Video ${index}] Player error:`, payload.error);
+      } else {
+        console.log(`[Video ${index}] Player status: ${payload.status}`);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [player, index]);
 
   // Generate random like/dislike counts on mount (different for each video)
   const [isLiked, setIsLiked] = useState(false);
@@ -380,6 +396,12 @@ const VideoWrapper = ({
     console.log(`[Video ${index}] Effect running: shouldPlay=${shouldPlay}, visibleIndex=${visibleIndex}, pauseOverride=${pauseOverride}`);
     
     if (shouldPlay) {
+      if (playerStatus !== "readyToPlay") {
+        console.log(
+          `[Video ${index}] Waiting for readyToPlay (status=${playerStatus})`
+        );
+        return;
+      }
       console.log(`[Video ${index}] Calling player.play()`);
       try {
         player.play();

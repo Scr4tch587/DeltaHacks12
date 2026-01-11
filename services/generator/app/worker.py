@@ -30,7 +30,7 @@ TEXT_TO_VIDEO_API_URL = os.getenv("TEXT_TO_VIDEO_API_URL", "http://text-to-video
 DO_SPACES_ENDPOINT = os.getenv("DO_SPACES_ENDPOINT", "https://deltahacksvideos.tor1.digitaloceanspaces.com")
 DO_SPACES_ACCESS_KEY = os.getenv("DO_SPACES_ACCESS_KEY", "")
 DO_SPACES_SECRET_KEY = os.getenv("DO_SPACES_SECRET_KEY", "")
-DO_SPACES_BUCKET = os.getenv("DO_SPACES_BUCKET", "deltahacks-videos")
+DO_SPACES_BUCKET = os.getenv("DO_SPACES_BUCKET", "deltahacksvideos")
 DO_SPACES_REGION = os.getenv("DO_SPACES_REGION", "tor1")
 DO_SPACES_CDN_URL = os.getenv("DO_SPACES_CDN_URL", "https://deltahacksvideos.tor1.cdn.digitaloceanspaces.com")
 

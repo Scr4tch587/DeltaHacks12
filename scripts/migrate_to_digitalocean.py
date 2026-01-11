@@ -32,7 +32,7 @@ VULTR_PREFIX = "deltahacks-storage-real/hls/"
 DO_ENDPOINT = os.getenv("DO_SPACES_ENDPOINT", "https://deltahacksvideos.tor1.digitaloceanspaces.com")
 DO_ACCESS_KEY = os.getenv("DO_SPACES_ACCESS_KEY", "")
 DO_SECRET_KEY = os.getenv("DO_SPACES_SECRET_KEY", "")
-DO_BUCKET = os.getenv("DO_SPACES_BUCKET", "deltahacks-videos")
+DO_BUCKET = os.getenv("DO_SPACES_BUCKET", "deltahacksvideos")
 DO_REGION = os.getenv("DO_SPACES_REGION", "tor1")
 
 # Destination prefix in DigitalOcean (simpler structure: hls/{video_id}/...)

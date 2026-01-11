@@ -433,7 +433,7 @@ if job["retry_count"] >= MAX_RETRIES:
 ### Directory Structure
 
 ```
-deltahacks-videos/                    # Bucket
+deltahacksvideos/                    # Bucket
 ├── hls/
 │   ├── {video_id}/                   # UUID, e.g., "a1b2c3d4-e5f6-..."
 │   │   ├── master.m3u8               # HLS manifest
