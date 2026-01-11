@@ -343,11 +343,13 @@ async def get_hls_segment(key: str):
         print(f"[HLS-SEG] Redirect: key={key}, url_preview={url_preview}")
         
         # Return 307 redirect (preserves method)
+        # Use 302 for better compatibility with some video players
         return RedirectResponse(
             url=presigned_url,
-            status_code=307,
+            status_code=302,  # Changed from 307 to 302 for better video player compatibility
             headers={
                 "Cache-Control": "private, max-age=60",
+                "Access-Control-Allow-Origin": "*",  # Ensure CORS for redirects
             }
         )
     
@@ -378,10 +380,11 @@ async def head_hls_segment(key: str):
         
         # Return HEAD response with Location header
         return Response(
-            status_code=307,
+            status_code=302,
             headers={
                 "Location": presigned_url,
                 "Cache-Control": "private, max-age=60",
+                "Access-Control-Allow-Origin": "*",
             }
         )
     
@@ -410,7 +413,7 @@ async def debug_presign(key: str = Query(...), api_key: str = Depends(verify_api
         raise HTTPException(status_code=400, detail="Key must start with 'hls/'")
     
     try:
-        from app.s3_client import PRESIGN_EXPIRES_SECONDS, S3_ADDRESSING_STYLE
+        from app.s3_client import PRESIGN_EXPIRES_SECONDS, S3_ADDRESSING_STYLE, get_s3_key, S3_KEY_PREFIX, VULTR_BUCKET as S3_BUCKET
         from urllib.parse import urlparse
         
         presigned_url = get_presigned_url(key, expires_in=PRESIGN_EXPIRES_SECONDS)
@@ -418,7 +421,6 @@ async def debug_presign(key: str = Query(...), api_key: str = Depends(verify_api
         # Extract host from URL for debugging
         parsed = urlparse(presigned_url)
         
-        from app.s3_client import get_s3_key, S3_KEY_PREFIX
         resolved_key = get_s3_key(key)
         
         return {
@@ -428,7 +430,7 @@ async def debug_presign(key: str = Query(...), api_key: str = Depends(verify_api
             "host": parsed.netloc,
             "expires_in_seconds": PRESIGN_EXPIRES_SECONDS,
             "addressing_style": S3_ADDRESSING_STYLE,
-            "bucket": VULTR_BUCKET,
+            "bucket": S3_BUCKET,
             "key_prefix": S3_KEY_PREFIX,
         }
     

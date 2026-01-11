@@ -17,6 +17,7 @@ import {
 } from "react-native";
 
 import { VideoView, useVideoPlayer } from "expo-video";
+import { Audio } from "expo-av";
 import { ReelOverlay } from "../../components/ReelOverlay";
 import { Ionicons } from "@expo/vector-icons";
 import Config from "../../config";
@@ -433,13 +434,31 @@ export default function HomeScreen() {
     }
   }, [visibleIndex, allVideos]);
 
+  // Configure audio mode for video playback
+  useEffect(() => {
+    async function configureAudio() {
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          allowsRecordingIOS: false,
+          interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+        });
+      } catch (error) {
+        console.warn("Failed to configure audio mode:", error);
+      }
+    }
+    configureAudio();
+  }, []);
+
   // Load initial videos from backend
   useEffect(() => {
     async function loadInitialVideos() {
       try {
         setLoading(true);
         const videos = await fetchVideosFromSemanticSearch(false);
-        
+
         if (videos.length === 0) {
           setError("No videos found");
         } else {

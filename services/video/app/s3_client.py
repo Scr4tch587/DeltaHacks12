@@ -131,8 +131,9 @@ def fetch_object(key: str) -> bytes:
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', '')
         if error_code == 'NoSuchKey':
-            raise Exception(f"Object not found: {key}")
+            # Include the full key in the error for debugging
+            raise Exception(f"Object not found: {key} (resolved to: {full_key} in bucket: {VULTR_BUCKET})")
         elif error_code == 'AccessDenied':
-            raise Exception(f"Access denied: {key}")
+            raise Exception(f"Access denied: {key} (resolved to: {full_key} in bucket: {VULTR_BUCKET})")
         else:
             raise Exception(f"Failed to fetch object '{key}': {str(e)}")
