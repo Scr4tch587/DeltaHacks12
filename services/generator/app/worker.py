@@ -213,7 +213,7 @@ def upload_hls_to_spaces(s3_client, hls_dir: str, video_id: str) -> dict:
                     Body=f,
                     ContentType=content_type,
                     ACL="public-read",
-                    CacheControl="public, max-age=31536000"  # 1 year cache
+                    CacheControl="public, max-age=3600"  # 1 hour cache (was 1 year - caused stale videos)
                 )
             
             uploaded_files.append(s3_key)
