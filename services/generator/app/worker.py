@@ -236,18 +236,17 @@ def create_video_document(videos_collection, job: dict, upload_result: dict) -> 
     
     Returns the video_id.
     """
-    video_id = job["output_video_id"]
+    # video_id = greenhouse_id (they are the same)
+    video_id = job["output_video_id"]  # Already set to greenhouse_id by backend
     
-    # Store greenhouse_id as integer to match jobs collection
-    greenhouse_id = job["greenhouse_id"]
+    # Store as integer if possible to match jobs collection
     try:
-        greenhouse_id = int(greenhouse_id)
+        video_id = int(video_id)
     except (ValueError, TypeError):
         pass
     
     video_doc = {
         "video_id": video_id,
-        "greenhouse_id": greenhouse_id,
         "s3_key": upload_result["s3_key"],
         "cdn_url": upload_result["cdn_url"],
         "template_id": job.get("template_id", "unknown"),
@@ -258,7 +257,7 @@ def create_video_document(videos_collection, job: dict, upload_result: dict) -> 
     
     videos_collection.insert_one(video_doc)
     
-    return video_id
+    return str(video_id)
 
 
 def process_job(job: dict, db, s3_client) -> bool:

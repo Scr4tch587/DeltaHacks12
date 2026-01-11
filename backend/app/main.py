@@ -876,9 +876,9 @@ async def enqueue_generation_job(
         print(f"  Skipping generation for {greenhouse_id} - user at concurrent limit ({active_count}/{MAX_USER_CONCURRENT_JOBS})")
         return None
     
-    # Generate job ID and output video ID
+    # Generate job ID and use greenhouse_id as output video ID
     job_id = str(uuid.uuid4())
-    output_video_id = str(uuid.uuid4())
+    output_video_id = str(greenhouse_id)  # video_id = greenhouse_id
     
     # Create generation job document
     job_doc = {
