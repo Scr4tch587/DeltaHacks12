@@ -1044,15 +1044,15 @@ async def search_jobs(request: SearchJobsRequest):
                 generation_job_ids=[]
             )
         
-        # Step 4: Check which jobs have videos
+        # Step 4: Check which jobs have videos (video_id = greenhouse_id)
         greenhouse_ids = [j["greenhouse_id"] for j in job_results]
         videos_cursor = videos_collection.find(
-            {"greenhouse_id": {"$in": greenhouse_ids}, "status": "ready"},
-            {"greenhouse_id": 1, "_id": 0}
+            {"video_id": {"$in": greenhouse_ids}, "status": "ready"},
+            {"video_id": 1, "_id": 0}
         )
         jobs_with_videos = set()
         async for doc in videos_cursor:
-            jobs_with_videos.add(doc["greenhouse_id"])
+            jobs_with_videos.add(doc["video_id"])  # video_id = greenhouse_id
         
         print(f"  {len(jobs_with_videos)} jobs have videos out of {len(job_results)} searched")
         
