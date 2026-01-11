@@ -1087,11 +1087,11 @@ async def search_jobs(request: SearchJobsRequest):
         
         # If we have enough above threshold, no generation needed
         if len(jobs_with_videos_above_threshold) >= TARGET_COUNT:
-            results_to_return = [j["greenhouse_id"] for j in jobs_with_videos_above_threshold[:TARGET_COUNT]]
+            results_to_return = [str(j["greenhouse_id"]) for j in jobs_with_videos_above_threshold[:TARGET_COUNT]]
             print(f"  Enough videos above threshold, returning {len(results_to_return)}")
         else:
             # Return best available (even if below threshold)
-            results_to_return = [j["greenhouse_id"] for j in available_with_videos[:TARGET_COUNT]]
+            results_to_return = [str(j["greenhouse_id"]) for j in available_with_videos[:TARGET_COUNT]]
             print(f"  Returning {len(results_to_return)} available videos")
             
             # Calculate deficit and trigger generation
