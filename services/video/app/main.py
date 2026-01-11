@@ -254,33 +254,56 @@ async def upload_video(
     }
 
 
-@app.get("/video/{video_id}")
-async def get_video(video_id: str):
+@app.get("/video/{greenhouse_id}")
+async def get_video(greenhouse_id: str):
     """
-    Get HLS playback URLs for a video.
-    
+    Get HLS playback URLs for a video by greenhouse_id.
+
     Returns direct CDN URLs for HLS playback. No presigned URLs or redirects needed
     since DigitalOcean Spaces CDN serves content publicly with edge caching.
-    
+
     Benefits:
     - Low latency: CDN edge caching near users
     - No redirects: Direct URLs in playlist
     - Simple: No presigned URL generation or playlist rewriting
-    
+
     Args:
-        video_id: The video ID (greenhouse_id) used as the folder name in HLS storage
-    
+        greenhouse_id: The greenhouse job ID to look up the video
+
     Returns:
         JSON with video_id, playback URLs (HLS manifest and poster), and metadata
     """
+    if not videos_collection:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    # Convert greenhouse_id to int if it looks like a number
+    try:
+        gh_id_int = int(greenhouse_id)
+    except ValueError:
+        gh_id_int = None
+    
+    # Look up video by greenhouse_id (try both string and int)
+    video = await videos_collection.find_one({
+        "greenhouse_id": {"$in": [greenhouse_id, gh_id_int] if gh_id_int else [greenhouse_id]},
+        "status": "ready"
+    })
+    
+    if not video:
+        raise HTTPException(status_code=404, detail=f"Video not found for greenhouse_id {greenhouse_id}")
+    
+    # Use the video_id (UUID) from the database for the actual file path
+    actual_video_id = video.get("video_id")
+    if not actual_video_id:
+        raise HTTPException(status_code=500, detail="Video document missing video_id")
+    
     cdn_base = DO_SPACES_CDN_URL.rstrip('/')
-    
-    # Construct direct CDN URLs
-    playback_url = f"{cdn_base}/hls/{video_id}/master.m3u8"
-    poster_url = f"{cdn_base}/hls/{video_id}/poster.jpg"
-    
+
+    # Construct direct CDN URLs using the actual video_id
+    playback_url = f"{cdn_base}/hls/{actual_video_id}/master.m3u8"
+    poster_url = f"{cdn_base}/hls/{actual_video_id}/poster.jpg"
+
     return {
-        "video_id": video_id,
+        "video_id": greenhouse_id,  # Return greenhouse_id for client compatibility
         "playback": {
             "type": "hls",
             "url": playback_url
