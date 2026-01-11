@@ -2,15 +2,28 @@ import os
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Header, Depends
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Header, Depends, Query
+from fastapi.responses import JSONResponse, Response, RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
 
+from app.s3_client import get_s3_client, get_presigned_url, fetch_object
+from app.hls_rewrite import rewrite_playlist
+
 app = FastAPI(title="Video Service", description="Video upload and retrieval service")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for hackathon
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load environment variables
 MONGODB_URI = os.getenv("MONGODB_URI", "")
@@ -22,7 +35,7 @@ VULTR_BUCKET = os.getenv("VULTR_BUCKET", "")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 PRESIGNED_URL_EXPIRY = int(os.getenv("PRESIGNED_URL_EXPIRY", "3600"))  # Default 1 hour
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "524288000"))  # Default 500MB in bytes
-PUBLIC_HLS_BASE_URL = os.getenv("PUBLIC_HLS_BASE_URL", "")  # Base URL for public HLS files
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")  # Base URL for HLS gateway (e.g., http://localhost:8002)
 
 # MongoDB client
 client = None
@@ -250,13 +263,182 @@ async def upload_video(
     }
 
 
+@app.get("/hls/{key:path}")
+async def get_hls_playlist(key: str):
+    """
+    Fetch and rewrite HLS playlist from S3.
+    
+    This endpoint fetches a playlist from Vultr Object Storage and rewrites all URIs
+    to point to our API gateway endpoints.
+    
+    Args:
+        key: S3 key path (e.g., "hls/abc123/master.m3u8")
+    
+    Returns:
+        Rewritten playlist with correct Content-Type headers
+    """
+    # Security: ensure key starts with hls/
+    if not key.startswith("hls/"):
+        raise HTTPException(status_code=400, detail="Key must start with 'hls/'")
+    
+    try:
+        # Fetch playlist from S3
+        playlist_content = fetch_object(key)
+        playlist_text = playlist_content.decode('utf-8')
+        
+        # Get API base URL (empty string for relative paths, or PUBLIC_BASE_URL if set)
+        api_base = PUBLIC_BASE_URL.rstrip('/') if PUBLIC_BASE_URL else ""
+        
+        # Rewrite the playlist
+        rewritten = rewrite_playlist(playlist_text, key, api_base)
+        
+        # Count rewritten URIs for logging
+        original_lines = playlist_text.split('\n')
+        rewritten_lines = rewritten.split('\n')
+        uri_count = sum(1 for line in original_lines if line.strip() and not line.strip().startswith('#'))
+        
+        # Log
+        print(f"[HLS] Served playlist: key={key}, size={len(playlist_content)} bytes, rewritten_uris={uri_count}")
+        
+        # Return with correct headers
+        return Response(
+            content=rewritten,
+            media_type="application/vnd.apple.mpegurl",
+            headers={
+                "Cache-Control": "no-store",
+            }
+        )
+    
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[HLS] Error serving playlist key={key}: {error_msg}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch playlist: {error_msg}")
+
+
+@app.get("/hls-seg/{key:path}")
+async def get_hls_segment(key: str):
+    """
+    Generate presigned URL and redirect to segment.
+    
+    This endpoint generates a presigned URL for an HLS segment and redirects
+    the client to download it directly from Vultr Object Storage.
+    
+    Args:
+        key: S3 key path (e.g., "hls/abc123/720p/seg_000.ts")
+    
+    Returns:
+        307 redirect to presigned URL
+    """
+    # Security: ensure key starts with hls/
+    if not key.startswith("hls/"):
+        raise HTTPException(status_code=400, detail="Key must start with 'hls/'")
+    
+    try:
+        from app.s3_client import PRESIGN_EXPIRES_SECONDS
+        # Generate presigned URL
+        presigned_url = get_presigned_url(key, expires_in=PRESIGN_EXPIRES_SECONDS)
+        
+        # Log (first 80 chars only)
+        url_preview = presigned_url[:80] + "..." if len(presigned_url) > 80 else presigned_url
+        print(f"[HLS-SEG] Redirect: key={key}, url_preview={url_preview}")
+        
+        # Return 307 redirect (preserves method)
+        return RedirectResponse(
+            url=presigned_url,
+            status_code=307,
+            headers={
+                "Cache-Control": "private, max-age=60",
+            }
+        )
+    
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[HLS-SEG] Error generating presigned URL key={key}: {error_msg}")
+        raise HTTPException(status_code=502, detail=f"Failed to generate presigned URL: {error_msg}")
+
+
+@app.head("/hls-seg/{key:path}")
+async def head_hls_segment(key: str):
+    """
+    HEAD request for HLS segment (for debugging).
+    
+    Args:
+        key: S3 key path
+    
+    Returns:
+        HEAD response with redirect location
+    """
+    # Security: ensure key starts with hls/
+    if not key.startswith("hls/"):
+        raise HTTPException(status_code=400, detail="Key must start with 'hls/'")
+    
+    try:
+        from app.s3_client import PRESIGN_EXPIRES_SECONDS
+        presigned_url = get_presigned_url(key, expires_in=PRESIGN_EXPIRES_SECONDS)
+        
+        # Return HEAD response with Location header
+        return Response(
+            status_code=307,
+            headers={
+                "Location": presigned_url,
+                "Cache-Control": "private, max-age=60",
+            }
+        )
+    
+    except Exception as e:
+        error_msg = str(e)
+        raise HTTPException(status_code=502, detail=f"Failed to generate presigned URL: {error_msg}")
+
+
+@app.get("/hls-debug/presign")
+async def debug_presign(key: str = Query(...), api_key: str = Depends(verify_api_key)):
+    """
+    Debug endpoint to test presigned URL generation.
+    
+    Protected endpoint that returns the resolved key and presigned URL
+    for debugging purposes.
+    
+    Args:
+        key: S3 key to generate presigned URL for
+        api_key: API key from header (verified by dependency)
+    
+    Returns:
+        JSON with resolved key and presigned URL
+    """
+    # Security: ensure key starts with hls/
+    if not key.startswith("hls/"):
+        raise HTTPException(status_code=400, detail="Key must start with 'hls/'")
+    
+    try:
+        from app.s3_client import PRESIGN_EXPIRES_SECONDS, S3_ADDRESSING_STYLE
+        from urllib.parse import urlparse
+        
+        presigned_url = get_presigned_url(key, expires_in=PRESIGN_EXPIRES_SECONDS)
+        
+        # Extract host from URL for debugging
+        parsed = urlparse(presigned_url)
+        
+        return {
+            "resolved_key": key,
+            "presigned_url": presigned_url,
+            "host": parsed.netloc,
+            "expires_in_seconds": PRESIGN_EXPIRES_SECONDS,
+            "addressing_style": S3_ADDRESSING_STYLE,
+            "bucket": VULTR_BUCKET,
+        }
+    
+    except Exception as e:
+        error_msg = str(e)
+        raise HTTPException(status_code=500, detail=f"Debug presign failed: {error_msg}")
+
+
 @app.get("/video/{video_id}")
 async def get_video(video_id: str):
     """
     Get HLS playback URLs for a video.
     
     This endpoint is public (no authentication required).
-    Returns URLs pointing to HLS files stored in Vultr Object Storage.
+    Returns absolute URL to the master playlist via our HLS gateway.
     
     Args:
         video_id: The video ID (greenhouse_id) used as the folder name in HLS storage
@@ -264,26 +446,21 @@ async def get_video(video_id: str):
     Returns:
         JSON with video_id, playback URLs (HLS manifest and poster), and metadata
     """
-    if not PUBLIC_HLS_BASE_URL:
-        # Fallback: construct from VULTR_ENDPOINT and VULTR_BUCKET if PUBLIC_HLS_BASE_URL not set
-        if VULTR_ENDPOINT and VULTR_BUCKET:
-            # Construct public URL: https://{bucket}.{region}.vultrobjects.com or {endpoint}/{bucket}
-            if VULTR_ENDPOINT.endswith('/'):
-                base_url = f"{VULTR_ENDPOINT.rstrip('/')}/{VULTR_BUCKET}"
-            else:
-                base_url = f"{VULTR_ENDPOINT}/{VULTR_BUCKET}"
-        else:
-            raise HTTPException(
-                status_code=500, 
-                detail="PUBLIC_HLS_BASE_URL not configured and cannot construct from VULTR_ENDPOINT/VULTR_BUCKET"
-            )
-    else:
-        base_url = PUBLIC_HLS_BASE_URL.rstrip('/')
+    if not PUBLIC_BASE_URL:
+        raise HTTPException(
+            status_code=500,
+            detail="PUBLIC_BASE_URL not configured"
+        )
     
-    # Construct HLS URLs
-    hls_base_path = f"hls/{video_id}"
-    playback_url = f"{base_url}/{hls_base_path}/master.m3u8"
-    poster_url = f"{base_url}/{hls_base_path}/poster.jpg"
+    base_url = PUBLIC_BASE_URL.rstrip('/')
+    
+    # Construct HLS URLs (keeping hls/ prefix, so it becomes /hls/hls/{video_id}/master.m3u8)
+    hls_key = f"hls/{video_id}/master.m3u8"
+    playback_url = f"{base_url}/hls/{hls_key}"
+    
+    # Poster URL (also via gateway)
+    poster_key = f"hls/{video_id}/poster.jpg"
+    poster_url = f"{base_url}/hls-seg/{poster_key}"
     
     return {
         "video_id": video_id,
