@@ -60,21 +60,55 @@ const getVideoServiceUrl = () => {
 };
 const VIDEO_SERVICE_URL = getVideoServiceUrl();
 
+// Headless service URL - defaults to same host as backend but port 8001
+const getHeadlessServiceUrl = () => {
+  const baseUrl = normalizeUrl(
+    process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000"
+  );
+
+  if (process.env.EXPO_PUBLIC_HEADLESS_SERVICE_URL) {
+    return normalizeUrl(process.env.EXPO_PUBLIC_HEADLESS_SERVICE_URL);
+  }
+
+  // Extract host from base URL and change port to 8001
+  try {
+    const url = new URL(baseUrl);
+    return `${url.protocol}//${url.hostname}:8001`;
+  } catch {
+    return "http://localhost:8001";
+  }
+};
+const HEADLESS_SERVICE_URL = getHeadlessServiceUrl();
+
 // Log configuration on startup
 console.log("🔧 API Configuration:");
 console.log("  API_BASE_URL:", API_BASE_URL);
 console.log("  VIDEO_SERVICE_URL:", VIDEO_SERVICE_URL);
+console.log("  HEADLESS_SERVICE_URL:", HEADLESS_SERVICE_URL);
 console.log(
   "  EXPO_PUBLIC_API_BASE_URL:",
   process.env.EXPO_PUBLIC_API_BASE_URL || "(not set, using default)"
 );
+console.log(
+  "  EXPO_PUBLIC_HEADLESS_SERVICE_URL:",
+  process.env.EXPO_PUBLIC_HEADLESS_SERVICE_URL || "(not set, will derive from API_BASE_URL)"
+);
+
+// Video data structure
+interface VideoData {
+  videoUrl: string;
+  greenhouseId: string;
+  companyName?: string;
+  title?: string;
+  description?: string;
+}
 
 // Function to fetch videos using semantic search
 async function fetchVideosFromSemanticSearch(
   user_id: string,
   text_prompt: string,
   resetIfEmpty: boolean = false
-): Promise<string[]> {
+): Promise<VideoData[]> {
   // ✅ Hard guard: if feed disabled, return immediately with no network calls
   if (DISABLE_FEED) return [];
 
@@ -121,7 +155,7 @@ async function fetchVideosFromSemanticSearch(
     console.log(`📹 Video Service URL: ${VIDEO_SERVICE_URL}`);
     console.log(`📹 Fetching HLS URLs for ${videoIds.length} videos...`);
 
-    const videoUrls = await Promise.all(
+    const videoDataArray = await Promise.all(
       videoIds.map(async (videoId: string) => {
         const videoUrl = `${VIDEO_SERVICE_URL}/video/${videoId}`;
         console.log(`  🔍 Fetching HLS URL for video ${videoId}`);
@@ -157,7 +191,13 @@ async function fetchVideosFromSemanticSearch(
           }
 
           console.log(`     ✅ Got playback URL for ${videoId}`);
-          return playbackUrl;
+          return {
+            videoUrl: playbackUrl,
+            greenhouseId: videoId,
+            companyName: videoData.company_name,
+            title: videoData.title,
+            description: videoData.description,
+          };
         } catch (error: any) {
           const elapsed = Date.now() - startTime;
           console.error(
@@ -169,10 +209,10 @@ async function fetchVideosFromSemanticSearch(
     );
 
     // Filter out null values (failed fetches)
-    const validUrls = videoUrls.filter((url): url is string => url !== null);
+    const validVideos = videoDataArray.filter((video) => video !== null) as VideoData[];
 
-    console.log(`✅ Loaded ${validUrls.length} HLS URLs`);
-    return validUrls;
+    console.log(`✅ Loaded ${validVideos.length} HLS URLs`);
+    return validVideos;
   } catch (error: any) {
     console.error("❌ Fatal error in fetchVideosFromSemanticSearch:");
     console.error("  Error type:", error?.name || "Unknown");
@@ -183,12 +223,13 @@ async function fetchVideosFromSemanticSearch(
 }
 
 interface VideoWrapperProps {
-  data: ListRenderItemInfo<string>;
-  allVideos: string[];
+  data: ListRenderItemInfo<VideoData>;
+  allVideos: VideoData[];
   visibleIndex: number;
   pause: () => void;
   share: (videoURL: string) => void;
   pauseOverride: boolean;
+  user: { user_id: string } | null;
 }
 
 const VideoWrapper = ({
@@ -198,6 +239,7 @@ const VideoWrapper = ({
   pause,
   pauseOverride,
   share,
+  user,
 }: VideoWrapperProps) => {
   const bottomHeight = useBottomTabBarHeight();
   const { index, item } = data;
@@ -206,16 +248,23 @@ const VideoWrapper = ({
   const shouldPlay = visibleIndex === index && !pauseOverride;
 
   // Always create player with real URL - the player handles lazy loading internally
-  const player = useVideoPlayer(allVideos[index], (player) => {
+  const player = useVideoPlayer(allVideos[index].videoUrl, (player) => {
     player.loop = true;
     player.muted = false;
   });
 
-  // State for like/dislike
+  // Generate random like/dislike counts on mount (different for each video)
   const [isLiked, setIsLiked] = useState(false);
   const [isDisliked, setIsDisliked] = useState(false);
-  const [likeCount, setLikeCount] = useState(12400);
-  const [dislikeCount, setDislikeCount] = useState(150);
+  // Generate random counts: likes between 1K-50K, dislikes between 50-500
+  const [likeCount, setLikeCount] = useState(() => {
+    const base = 1000 + Math.floor(Math.random() * 49000);
+    return base;
+  });
+  const [dislikeCount, setDislikeCount] = useState(() => {
+    const base = 50 + Math.floor(Math.random() * 450);
+    return base;
+  });
 
   const handleLike = () => {
     // Lock the upvote button - once liked, cannot be removed
@@ -228,6 +277,46 @@ const VideoWrapper = ({
     if (isDisliked) {
       setIsDisliked(false);
       setDislikeCount(dislikeCount - 1);
+    }
+
+    // Call submit_application when user upvotes (fire-and-forget - don't await)
+    // This is a long-running operation that can take several minutes, so we
+    // submit it in the background without blocking the UI
+    if (user?.user_id) {
+      const greenhouseId = allVideos[index].greenhouseId;
+      const submitUrl = `${HEADLESS_SERVICE_URL}/api/v1/applications/analyze`;
+      console.log(`📝 Submitting application for job ${greenhouseId} (background)...`);
+      console.log(`🔗 Target URL: ${submitUrl}`);
+      console.log(`🔗 HEADLESS_SERVICE_URL: ${HEADLESS_SERVICE_URL}`);
+      
+      // Fire-and-forget: don't await this long-running operation
+      fetch(submitUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-ID": user.user_id,
+        },
+        body: JSON.stringify({
+          job_id: greenhouseId,
+          auto_submit: true,
+        }),
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ Failed to submit application: ${response.status} ${response.statusText}`, errorText);
+          } else {
+            const result = await response.json();
+            console.log(`✅ Application submitted successfully:`, result);
+          }
+        })
+        .catch((error: any) => {
+          // Timeout errors are expected for long-running operations
+          // The application is still being processed on the server
+          console.error(`❌ Error submitting application:`, error?.message || String(error));
+          console.error(`❌ Error details - URL was: ${submitUrl}`);
+          console.error(`❌ Error details - HEADLESS_SERVICE_URL: ${HEADLESS_SERVICE_URL}`);
+        });
     }
   };
 
@@ -295,9 +384,9 @@ const VideoWrapper = ({
       <Pressable onPress={pause} style={$tapOverlay} />
 
       <ReelOverlay
-        companyName="Company Name"
-        title="Video Title Goes Here"
-        description="This is a sample description for the video content. It can be up to two lines long."
+        companyName={allVideos[index].companyName || "Company"}
+        title={allVideos[index].title || "Job Title"}
+        description={allVideos[index].description || "Job description"}
         likeCount={likeCount}
         dislikeCount={dislikeCount}
         shareCount={3200}
@@ -305,7 +394,7 @@ const VideoWrapper = ({
         isDisliked={isDisliked}
         onLike={handleLike}
         onDislike={handleDislike}
-        onShare={() => share(item)}
+        onShare={() => share(item.videoUrl)}
         onProfilePress={() => console.log("Profile pressed")}
       />
 
@@ -323,7 +412,7 @@ export default function HomeScreen() {
   const bottomHeight = useBottomTabBarHeight();
   const { user, token } = useAuth();
 
-  const [allVideos, setAllVideos] = useState<string[]>([]);
+  const [allVideos, setAllVideos] = useState<VideoData[]>([]);
   const [visibleIndex, setVisibleIndex] = useState(0);
   const [pauseOverride, setPauseOverride] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -375,7 +464,7 @@ export default function HomeScreen() {
       const nextIndices = [visibleIndex + 1, visibleIndex + 2];
       for (const idx of nextIndices) {
         if (idx < allVideos.length && allVideos[idx]) {
-          const manifestUrl = allVideos[idx];
+          const manifestUrl = allVideos[idx].videoUrl;
           if (!prefetchedManifests.current.has(manifestUrl)) {
             try {
               await fetch(manifestUrl);
@@ -692,6 +781,7 @@ export default function HomeScreen() {
               pause={pause}
               share={share}
               pauseOverride={pauseOverride}
+              user={user}
             />
           );
         }}

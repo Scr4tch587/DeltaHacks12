@@ -43,6 +43,7 @@ DO_SPACES_REGION = os.getenv("DO_SPACES_REGION", "tor1")
 client = None
 db = None
 videos_collection = None
+jobs_collection = None
 
 # S3 client for DigitalOcean Spaces
 s3_client = None
@@ -60,7 +61,7 @@ async def verify_api_key(x_api_key: str = Header(...)) -> str:
 @app.on_event("startup")
 async def startup_db_client():
     """Initialize MongoDB connection and S3 client on startup"""
-    global client, db, videos_collection, s3_client
+    global client, db, videos_collection, jobs_collection, s3_client
     
     # Initialize MongoDB
     if MONGODB_URI:
@@ -68,6 +69,7 @@ async def startup_db_client():
             client = AsyncIOMotorClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
             db = client[MONGODB_DB]
             videos_collection = db.videos
+            jobs_collection = db.jobs
             await client.admin.command('ping')
             print(f"✓ Connected to MongoDB Atlas (database: {MONGODB_DB})")
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
@@ -75,6 +77,7 @@ async def startup_db_client():
             client = None
             db = None
             videos_collection = None
+            jobs_collection = None
     else:
         print("⚠ MONGODB_URI not set - skipping MongoDB connection")
     
@@ -297,6 +300,38 @@ async def get_video(video_id: str):
     playback_url = f"{cdn_base}/hls/{video_id}/master.m3u8"
     poster_url = f"{cdn_base}/hls/{video_id}/poster.jpg"
 
+    # Query jobs collection for company name, title, and description
+    company_name = "Company"
+    title = "Video Title"
+    description = "Video description"
+    
+    if jobs_collection:
+        try:
+            # Try both int and string versions of greenhouse_id
+            job_query = {"greenhouse_id": vid_int} if vid_int else {"greenhouse_id": video_id}
+            job = await jobs_collection.find_one(job_query)
+            
+            if not job and vid_int:
+                # Try string version if int didn't work
+                job = await jobs_collection.find_one({"greenhouse_id": video_id})
+            elif not job and not vid_int:
+                # Try int version if string didn't work
+                try:
+                    job = await jobs_collection.find_one({"greenhouse_id": int(video_id)})
+                except (ValueError, TypeError):
+                    pass
+            
+            if job:
+                company_name = job.get("company_name", "Company")
+                title = job.get("title", "Video Title")
+                # Use description_text if available, fallback to description
+                description = job.get("description_text") or job.get("description", "Video description")
+                # Truncate description to reasonable length for display
+                if len(description) > 200:
+                    description = description[:197] + "..."
+        except Exception as e:
+            print(f"Warning: Failed to fetch job metadata for {video_id}: {e}")
+    
     return {
         "video_id": video_id,
         "playback": {
@@ -305,5 +340,8 @@ async def get_video(video_id: str):
         },
         "poster_url": poster_url,
         "duration_s": None,
-        "aspect_ratio": "9:16"
+        "aspect_ratio": "9:16",
+        "company_name": company_name,
+        "title": title,
+        "description": description
     }

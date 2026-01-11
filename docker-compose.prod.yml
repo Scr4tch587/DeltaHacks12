@@ -23,9 +23,9 @@ services:
     build:
       context: ./services/headless
       dockerfile: Dockerfile
-    # Not exposed publicly - only accessible internally or via Tailscale
+    # Exposed publicly for frontend access
     ports:
-      - "127.0.0.1:8001:8001"
+      - "8001:8001"
     env_file:
       - .env
     environment:
