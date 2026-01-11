@@ -823,8 +823,10 @@ class GreenhouseApplier:
         import os
         from pathlib import Path
         
-        # HARDCODED PATH for Windows testing
-        hardcoded_path = r"C:\Desktop\Repos\DeltaHacks12\services\headless\data\resumes\thomasariogpt_gmail_com\resume.pdf"
+        # Relative path from this module: app/applying/greenhouse.py -> data/resumes/...
+        # Go up 3 levels (applying -> app -> headless) then into data/resumes
+        module_dir = Path(__file__).parent.parent.parent
+        hardcoded_path = module_dir / "data" / "resumes" / "thomasariogpt_gmail_com" / "resume.pdf"
         
         # Use hardcoded path if it exists, otherwise try the provided path
         if os.path.exists(hardcoded_path):
