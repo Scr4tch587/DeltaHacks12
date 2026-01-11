@@ -235,7 +235,7 @@ def main():
         sys.exit(1)
 
 
-def generate_video_from_text(job_description: str, output_path: str, output_name: str = "output"):
+def generate_video_from_text(job_description: str, output_path: str, output_name: str = "output", output_format: str = "hls"):
     """
     Simple function to generate video from job description text and save to output path.
     
@@ -243,21 +243,32 @@ def generate_video_from_text(job_description: str, output_path: str, output_name
         job_description: The job description text (string, not file path)
         output_path: Path where all output files will be saved (scripts, audio, video)
         output_name: Name for the output video file (default: "output")
+        output_format: Output format - "hls" for HLS streaming or "mp4" for MP4 file (default: "hls")
     
     Returns:
-        Path to the generated video file
+        Path to the generated video file (HLS master.m3u8 or MP4 file path)
     
     Example:
+        # Generate HLS
         video_path = generate_video_from_text(
             job_description="Senior Python Developer...",
             output_path="/tmp/job_videos",
-            output_name="python_dev"
+            output_format="hls"
+        )
+        
+        # Generate MP4
+        video_path = generate_video_from_text(
+            job_description="Senior Python Developer...",
+            output_path="/tmp/job_videos",
+            output_format="mp4"
         )
         print(f"Video saved to: {video_path}")
     """
     from config import CACHE_DIR
     import shutil
     
+    if output_format not in ["hls", "mp4"]:
+        raise ValueError(f"output_format must be 'hls' or 'mp4', got '{output_format}'")
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
     
@@ -284,7 +295,7 @@ def generate_video_from_text(job_description: str, output_path: str, output_name
     # Step 3: Compose video
     print("\n--- STEP 3: COMPOSING VIDEO ---")
     composer = VideoComposerFFmpeg(topic=script_cache_key)
-    video_path = composer.compose_video(audio_files, script, output_name=output_name)
+    video_path = composer.compose_video(audio_files, script, output_name=output_name, output_format=output_format)
     print(f"[OK] Video generated: {video_path}")
     
     # Copy all outputs to output_path
@@ -308,31 +319,43 @@ def generate_video_from_text(job_description: str, output_path: str, output_name
         shutil.copy2(audio_file, audio_dir / audio_file.name)
     print(f"[OK] Copied {len(list(audio_dir.glob('*.mp3')))} audio files")
     
-    # Copy video (now HLS structure: hls/{video_id}/)
-    # video_path points to hls/{video_id}/master.m3u8
-    # Only copy the specific video_id directory, not the entire hls/ tree
-    hls_video_id_dir = Path(video_path).parent  # Go up from master.m3u8 to hls/{video_id}/
-    hls_dst = output_path / "hls" / output_name
-    if hls_video_id_dir.exists():
-        hls_dst.parent.mkdir(parents=True, exist_ok=True)
-        if hls_dst.exists():
-            shutil.rmtree(hls_dst)
-        shutil.copytree(hls_video_id_dir, hls_dst)
-        print(f"[OK] Copied HLS directory structure")
-        print(f"  `-- hls/{output_name}/")
-        print(f"      |-- master.m3u8")
-        print(f"      |-- poster.jpg")
-        print(f"      `-- 720p/ (with .ts segments)")
-    
-    # Extract the actual master.m3u8 path
-    master_m3u8_path = hls_dst / "master.m3u8"
+    # Copy video - format depends on output_format
+    if output_format == "hls":
+        # Copy HLS structure: hls/{video_id}/
+        # video_path points to hls/{video_id}/master.m3u8
+        # Only copy the specific video_id directory, not the entire hls/ tree
+        hls_video_id_dir = Path(video_path).parent  # Go up from master.m3u8 to hls/{video_id}/
+        hls_dst = output_path / "hls" / output_name
+        if hls_video_id_dir.exists():
+            hls_dst.parent.mkdir(parents=True, exist_ok=True)
+            if hls_dst.exists():
+                shutil.rmtree(hls_dst)
+            shutil.copytree(hls_video_id_dir, hls_dst)
+            print(f"[OK] Copied HLS directory structure")
+            print(f"  `-- hls/{output_name}/")
+            print(f"      |-- master.m3u8")
+            print(f"      |-- poster.jpg")
+            print(f"      `-- 720p/ (with .ts segments)")
+        
+        # Extract the actual master.m3u8 path
+        final_video_path = hls_dst / "master.m3u8"
+    else:
+        # Copy MP4 file
+        mp4_dst = output_path / f"{output_name}.mp4"
+        if Path(video_path).exists():
+            shutil.copy2(video_path, mp4_dst)
+            print(f"[OK] Copied MP4 file")
+            print(f"  `-- {output_name}.mp4")
+        
+        final_video_path = mp4_dst
     
     print(f"\n{'='*60}")
-    print(f"SUCCESS! HLS Video generated and saved to:")
-    print(f"  {master_m3u8_path}")
+    format_name = "HLS" if output_format == "hls" else "MP4"
+    print(f"SUCCESS! {format_name} Video generated and saved to:")
+    print(f"  {final_video_path}")
     print(f"{'='*60}\n")
     
-    return str(master_m3u8_path)
+    return str(final_video_path)
 
 
 if __name__ == "__main__":

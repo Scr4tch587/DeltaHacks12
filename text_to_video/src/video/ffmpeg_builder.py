@@ -25,19 +25,44 @@ class FFmpegCommandBuilder:
     def __init__(self):
         pass
 
-    def get_background_video(self) -> Path:
-        """Find and randomly select a background video file."""
+    def get_background_video(self, duration: float = 60.0) -> Path:
+        """Find and randomly select a background video file, or generate a solid color background."""
         video_files = list(BACKGROUNDS_DIR.glob("*.mp4")) + \
                      list(BACKGROUNDS_DIR.glob("*.mov")) + \
                      list(BACKGROUNDS_DIR.glob("*.avi"))
 
-        if not video_files:
-            raise FileNotFoundError(
-                f"No background video found in {BACKGROUNDS_DIR}"
-            )
-
-        # Randomly select a background video
-        return random.choice(video_files)
+        if video_files:
+            # Randomly select a background video
+            return random.choice(video_files)
+        
+        # No background video found - generate a solid color background
+        print("No background video found, generating solid color background...")
+        BACKGROUNDS_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Generate a gradient/animated background using FFmpeg
+        background_path = BACKGROUNDS_DIR / "generated_background.mp4"
+        
+        if not background_path.exists():
+            # Create a dark gradient animated background
+            # Uses FFmpeg's color and gradient filters
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "lavfi",
+                "-i", f"color=c=0x1a1a2e:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:d={duration}:r={VIDEO_FPS}",
+                "-vf", "format=yuv420p",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "23",
+                background_path
+            ]
+            
+            try:
+                subprocess.run(cmd, check=True, capture_output=True)
+                print(f"Generated background: {background_path}")
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Failed to generate background: {e.stderr.decode()}")
+        
+        return background_path
 
     def concatenate_audio(self, audio_files: List[Dict], output_dir: Path) -> Path:
         """Concatenate all audio files into one with volume normalization."""
@@ -176,8 +201,8 @@ class FFmpegCommandBuilder:
         char_width, char_height = CHARACTER_SIZE
         char_y = VIDEO_HEIGHT - char_height - CHARACTER_BOTTOM_MARGIN
         
-        # Get list of all characters
-        characters = list(character_image_times.keys())
+        # Get list of all characters (normalize to lowercase)
+        characters = [c.lower() for c in character_image_times.keys()]
         num_characters = len(characters)
         
         # Determine character order based on first appearance in audio_files
@@ -194,38 +219,37 @@ class FFmpegCommandBuilder:
         if not character_order or len(character_order) != num_characters:
             character_order = sorted(characters)
         
+        # Debug: print character order
+        print(f"Character speaking order: {character_order}")
+        print(f"Characters from image_times: {characters}")
+        
         # Calculate X positions based on speaking order
-        # CRITICAL: Position characters so their CENTERS align at fixed positions
-        # This ensures when characters switch, their centers stay in the same place
-        # First speaker: bottom left, Second: bottom right, Third: bottom center
+        # First speaker: bottom LEFT, Second speaker: bottom RIGHT, Third: bottom CENTER
         
-        # Define center X positions for each slot (centers stay fixed)
-        left_center_x = CHARACTER_EDGE_MARGIN + char_width / 2
-        right_center_x = VIDEO_WIDTH - CHARACTER_EDGE_MARGIN - char_width / 2
-        center_center_x = VIDEO_WIDTH / 2
+        # Define X positions (top-left corner of character image)
+        left_x = CHARACTER_EDGE_MARGIN
+        right_x = VIDEO_WIDTH - CHARACTER_EDGE_MARGIN - char_width
+        center_x = (VIDEO_WIDTH - char_width) // 2
         
-        # Position characters so their centers align with slot centers
+        # Position characters based on speaking order
         char_positions = {}
         if num_characters == 1:
-            # Single character: bottom left (center aligned)
-            char_positions[character_order[0]] = int(left_center_x - char_width / 2)
+            # Single character: bottom left
+            char_positions[character_order[0]] = left_x
         elif num_characters == 2:
-            # Two characters: first on left, second on right (centers aligned)
-            char_positions[character_order[0]] = int(left_center_x - char_width / 2)  # Left center
-            char_positions[character_order[1]] = int(right_center_x - char_width / 2)  # Right center
+            # Two characters: first speaker on LEFT, second speaker on RIGHT
+            char_positions[character_order[0]] = left_x   # First speaker → LEFT
+            char_positions[character_order[1]] = right_x  # Second speaker → RIGHT
         elif num_characters == 3:
-            # Three characters: first on left, second on right, third in center (centers aligned)
-            char_positions[character_order[0]] = int(left_center_x - char_width / 2)  # Left center
-            char_positions[character_order[1]] = int(right_center_x - char_width / 2)  # Right center
-            char_positions[character_order[2]] = int(center_center_x - char_width / 2)  # Center center
+            # Three characters: first on LEFT, second on RIGHT, third in CENTER
+            char_positions[character_order[0]] = left_x    # First speaker → LEFT
+            char_positions[character_order[1]] = right_x   # Second speaker → RIGHT
+            char_positions[character_order[2]] = center_x  # Third speaker → CENTER
         else:
-            # More than 3 characters: distribute evenly with aligned centers
-            slot_centers = []
+            # More than 3 characters: distribute evenly
             spacing = (VIDEO_WIDTH - 2 * CHARACTER_EDGE_MARGIN - char_width) / (num_characters - 1)
-            for i in range(num_characters):
-                slot_centers.append(CHARACTER_EDGE_MARGIN + char_width / 2 + i * spacing)
             for i, char in enumerate(character_order):
-                char_positions[char] = int(slot_centers[i] - char_width / 2)
+                char_positions[char] = int(CHARACTER_EDGE_MARGIN + i * spacing)
         
         # Start building filter complex
         filter_parts = [
@@ -244,8 +268,9 @@ class FFmpegCommandBuilder:
         current_pad = "bg"
         pad_counter = 1
         
-        for character in sorted(characters):
-            char_x = char_positions[character]
+        for character in character_image_times.keys():
+            # Use lowercase for position lookup
+            char_x = char_positions[character.lower()]
             char_images = character_image_times[character]
             
             for image in sorted(char_images.keys()):

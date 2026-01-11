@@ -3,9 +3,16 @@
 import json
 import threading
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
-import stable_whisper
+# Try to import stable_whisper - it's optional (large dependency)
+try:
+    import stable_whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    stable_whisper = None
+    WHISPER_AVAILABLE = False
+    print("⚠ stable_whisper not installed - word-level timestamps will be estimated")
 
 from utils.cache import load_timestamp_cache, save_timestamp_cache
 from utils.text_processing import strip_emotion_markers
@@ -21,6 +28,9 @@ class Transcriber:
 
     def _load_whisper_model(self):
         """Load Whisper model in a thread-safe manner."""
+        if not WHISPER_AVAILABLE:
+            return None
+            
         if self.whisper_model is None:
             with self._whisper_lock:
                 if self.whisper_model is None:
@@ -45,9 +55,15 @@ class Transcriber:
         if cached is not None:
             return audio_path, cached
         
+        # If whisper not available, return empty (will use estimated timing)
+        if not WHISPER_AVAILABLE:
+            return audio_path, []
+        
         try:
             # Load Whisper model (thread-safe)
             model = self._load_whisper_model()
+            if model is None:
+                return audio_path, []
             
             # Transcribe with word-level timestamps
             print(f"Transcribing {audio_path.name} for precise word timing...")
@@ -143,6 +159,12 @@ class Transcriber:
 
         if not tasks_to_process:
             print("All audio files already transcribed (using cache).")
+            return self._transcription_cache
+
+        if not WHISPER_AVAILABLE:
+            print("Whisper not available - using estimated word timing for all audio files.")
+            for audio_path, text, cache_path in tasks_to_process:
+                self._transcription_cache[audio_path] = []
             return self._transcription_cache
 
         print(f"Transcribing {len(tasks_to_process)} audio file(s)...")

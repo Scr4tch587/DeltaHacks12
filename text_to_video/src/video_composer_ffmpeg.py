@@ -30,7 +30,8 @@ class VideoComposerFFmpeg:
         self,
         audio_files: List[Dict],
         script: Dict,
-        output_name: str = None
+        output_name: str = None,
+        output_format: str = "hls"
     ) -> Path:
         """
         Compose the final video using FFmpeg.
@@ -39,11 +40,15 @@ class VideoComposerFFmpeg:
             audio_files: List of audio info dicts from TTSGenerator
             script: Script dictionary with topic and lines
             output_name: Optional output filename (without extension)
+            output_format: Output format - "hls" for HLS streaming or "mp4" for MP4 file (default: "hls")
 
         Returns:
-            Path to the generated master.m3u8 file in hls/{video_id}/ structure
+            Path to the generated master.m3u8 file (HLS) or MP4 file path
         """
-        print("Composing video with FFmpeg...")
+        if output_format not in ["hls", "mp4"]:
+            raise ValueError(f"output_format must be 'hls' or 'mp4', got '{output_format}'")
+        
+        print(f"Composing video with FFmpeg ({output_format.upper()})...")
 
         # Check FFmpeg availability
         if not check_ffmpeg():
@@ -123,29 +128,66 @@ class VideoComposerFFmpeg:
             character_group_name=character_group_name
         )
 
-        # Build FFmpeg command for HLS output
+        # Build FFmpeg command based on output format
         filter_file = video_dir / "filter_complex.txt"
-        hls_cmd, rendition_playlist = build_hls_output(
-            background,
-            full_audio,
-            filter_complex,
-            filter_file,
-            random_start,
-            total_duration,
-            video_dir,
-            title=video_title
-        )
+        filter_file.write_text(filter_complex, encoding='utf-8')
+        
+        if output_format == "hls":
+            # Build HLS output command
+            from video.hls_builder import build_hls_output, create_master_playlist, generate_poster_image
+            hls_cmd, rendition_playlist = build_hls_output(
+                background,
+                full_audio,
+                filter_complex,
+                filter_file,
+                random_start,
+                total_duration,
+                video_dir,
+                title=video_title
+            )
+            cmd = hls_cmd
+            render_type = "HLS"
+            playlist_path = rendition_playlist
+        else:
+            # Build MP4 output command
+            mp4_output = video_dir / f"{output_name}.mp4"
+            cmd = [
+                'ffmpeg',
+                '-ss', str(random_start),
+                '-stream_loop', '-1',
+                '-i', str(background),
+                '-i', str(full_audio),
+                '-filter_complex_script', str(filter_file),
+                '-map', '[v]',
+                '-map', '1:a',
+                '-shortest',
+                # Video encoding: H.264
+                '-c:v', 'libx264',
+                '-profile:v', 'high',
+                '-preset', 'medium',
+                '-crf', '23',
+                # Audio encoding: AAC
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-ar', '44100',
+                '-ac', '2',
+                '-y',
+                str(mp4_output)
+            ]
+            render_type = "MP4"
+            playlist_path = mp4_output
 
         # Run FFmpeg with progress reporting
         from config import VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS
-        print("Rendering HLS video...")
+        print(f"Rendering {render_type} video...")
         print(f"  Resolution: {VIDEO_WIDTH}x{VIDEO_HEIGHT} @ {VIDEO_FPS}fps")
         print(f"  Duration: {total_duration:.1f}s")
-        print(f"  Segment duration: 2.0s")
+        if output_format == "hls":
+            print(f"  Segment duration: 2.0s")
         print(f"  Estimated render time: {total_duration * 0.3:.1f}s - {total_duration * 0.6:.1f}s")
         print("  (Progress indicators will appear from FFmpeg)")
         
-        result = subprocess.run(hls_cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
             print(f"\nFFmpeg error: {result.stderr}")
@@ -155,23 +197,30 @@ class VideoComposerFFmpeg:
             filter_file.rename(filter_file_debug)
             raise RuntimeError(f"FFmpeg failed with return code {result.returncode}")
 
-        # Create master playlist
-        print("Creating master playlist...")
-        master_playlist = create_master_playlist(
-            video_dir,
-            rendition_playlist
-        )
-        print(f"Master playlist: {master_playlist}")
+        if output_format == "hls":
+            # Create master playlist and poster for HLS
+            from video.hls_builder import create_master_playlist, generate_poster_image
+            print("Creating master playlist...")
+            master_playlist = create_master_playlist(
+                video_dir,
+                playlist_path
+            )
+            print(f"Master playlist: {master_playlist}")
 
-        # Generate poster image from first segment
-        print("Generating poster image...")
-        first_segment = video_dir / "720p" / "seg_000.ts"
-        poster_path = video_dir / "poster.jpg"
-        if first_segment.exists():
-            generate_poster_image(first_segment, poster_path)
-            print(f"Poster image: {poster_path}")
+            # Generate poster image from first segment
+            print("Generating poster image...")
+            first_segment = video_dir / "720p" / "seg_000.ts"
+            poster_path = video_dir / "poster.jpg"
+            if first_segment.exists():
+                generate_poster_image(first_segment, poster_path)
+                print(f"Poster image: {poster_path}")
+            else:
+                print(f"Warning: First segment not found, skipping poster generation")
+            
+            final_path = master_playlist
         else:
-            print(f"Warning: First segment not found, skipping poster generation")
+            # MP4 output
+            final_path = playlist_path
 
         # Clean up temporary files
         print("Cleaning up temporary files...")
@@ -187,10 +236,9 @@ class VideoComposerFFmpeg:
             if timestamp_file.exists():
                 timestamp_file.unlink()
 
-        print(f"[SUCCESS] HLS video generated successfully:")
-        print(f"  Master playlist: {master_playlist}")
-        print(f"  Rendition playlist: {rendition_playlist}")
-        return master_playlist
+        print(f"[SUCCESS] {render_type} video generated successfully:")
+        print(f"  Output path: {final_path}")
+        return final_path
 
 
 if __name__ == "__main__":

@@ -3,9 +3,10 @@ requests>=2.31.0  # For Gemini API calls
 aiohttp>=3.9.0  # For async/concurrent HTTP requests
 fish-audio-sdk>=1.0.0  # Official Fish Audio SDK
 
-# Speech recognition for word-level timestamps
-openai-whisper>=20231117
-stable-ts>=2.0.0  # For word-level timestamps with Whisper
+# Speech recognition for word-level timestamps (OPTIONAL - large dependency ~1.5GB)
+# Uncomment these for precise word-level subtitles:
+# openai-whisper>=20231117
+# stable-ts>=2.0.0
 
 # Video processing
 # Uses FFmpeg directly via subprocess (no Python dependencies needed)
@@ -16,3 +17,4 @@ stable-ts>=2.0.0  # For word-level timestamps with Whisper
 
 # Utilities
 python-dotenv>=1.0.0
+nest-asyncio>=1.6.0  # Handle nested event loops in FastAPI

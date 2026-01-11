@@ -257,28 +257,46 @@ async def upload_video(
 @app.get("/video/{video_id}")
 async def get_video(video_id: str):
     """
-    Get HLS playback URLs for a video.
-    
+    Get HLS playback URLs for a video by video_id (greenhouse_id).
+
     Returns direct CDN URLs for HLS playback. No presigned URLs or redirects needed
     since DigitalOcean Spaces CDN serves content publicly with edge caching.
-    
+
     Benefits:
     - Low latency: CDN edge caching near users
     - No redirects: Direct URLs in playlist
     - Simple: No presigned URL generation or playlist rewriting
-    
+
     Args:
-        video_id: The video ID (greenhouse_id) used as the folder name in HLS storage
-    
+        video_id: The video/greenhouse job ID (they are the same)
+
     Returns:
         JSON with video_id, playback URLs (HLS manifest and poster), and metadata
     """
-    cdn_base = DO_SPACES_CDN_URL.rstrip('/')
+    if videos_collection is None:
+        raise HTTPException(status_code=503, detail="Database not available")
     
-    # Construct direct CDN URLs
+    # Convert video_id to int if it looks like a number
+    try:
+        vid_int = int(video_id)
+    except ValueError:
+        vid_int = None
+    
+    # Look up video by video_id (which equals greenhouse_id)
+    video = await videos_collection.find_one({
+        "video_id": {"$in": [video_id, vid_int] if vid_int else [video_id]},
+        "status": "ready"
+    })
+    
+    if not video:
+        raise HTTPException(status_code=404, detail=f"Video not found for video_id {video_id}")
+    
+    cdn_base = DO_SPACES_CDN_URL.rstrip('/')
+
+    # Construct direct CDN URLs - video_id is used as the folder name
     playback_url = f"{cdn_base}/hls/{video_id}/master.m3u8"
     poster_url = f"{cdn_base}/hls/{video_id}/poster.jpg"
-    
+
     return {
         "video_id": video_id,
         "playback": {

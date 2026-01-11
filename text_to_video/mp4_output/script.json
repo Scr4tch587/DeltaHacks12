@@ -1,0 +1,64 @@
+{
+  "topic": "Senior Python Backend Developer\n    \n    We are looking for an experienced Python developer to lead our backend team.\n    \n    Requirements:\n    - 5+ years Python development\n    - FastAPI or Django experience\n    - PostgreSQL and Redis\n    - Docker and Kubernetes\n    \n    Responsibilities:\n    - Design and implement scalable backend systems\n    - Lead technical discussions\n    - Mentor junior developers\n    - Deploy and maintain production systems",
+  "title": "Backend Services - Senior Python Backend Developer",
+  "lines": [
+    {
+      "character": "biden",
+      "text": "(confused) Barack, I was... I was scrolling on the... the thing, and I'm broke. (sighing) Tech is too hard, man.",
+      "images": [
+        "confused_biden",
+        "defensive_biden"
+      ]
+    },
+    {
+      "character": "obama",
+      "text": "(confident) Look, Joe, this Senior Python role is your entry point. (sarcastic) You just need to lead a team through the weeds.",
+      "images": [
+        "confident_obama",
+        "sarcastic_obama"
+      ]
+    },
+    {
+      "character": "trump",
+      "text": "(shouting) Wrong! (excited) It's a goldmine, Joe! They'll mentor your sleepy brain and carry you to the finish line!",
+      "images": [
+        "aggressive_trump",
+        "excited_trump"
+      ]
+    },
+    {
+      "character": "biden",
+      "text": "(surprised) Mentors? (confused) But I don't know Python or the... the Docker containers! Is that for boats?",
+      "images": [
+        "surprised_biden",
+        "confused_biden"
+      ]
+    },
+    {
+      "character": "obama",
+      "text": "(calm) Let me be clear: Five years of coding, Django, and Kubernetes. (confident) The perks are tremendous.",
+      "images": [
+        "confident_obama",
+        "confident_obama"
+      ]
+    },
+    {
+      "character": "trump",
+      "text": "(boastful) The salary is huge, folks! Best benefits, big league equity. (shouting) Don't be a loser, sign the contract!",
+      "images": [
+        "boastful_trump",
+        "excited_trump"
+      ]
+    },
+    {
+      "character": "biden",
+      "text": "(interested) Equity? (excited) No malarkey? (grateful) Alright, I\u00e2\u20ac\u2122m locking in! Let's build the big backend!",
+      "images": [
+        "surprised_biden",
+        "defensive_biden",
+        "defensive_biden"
+      ]
+    }
+  ],
+  "_cache_key": "Senior Python Backend Developer\n    \n    We are looking for an experienced Python developer to lead our backend team.\n    \n    Requirements:\n    - 5+ years Python development\n    - FastAPI or Django experience\n    - PostgreSQL and Redis\n    - Docker and Kubernetes\n    \n    Responsibilities:\n    - Design and implement scalable backend systems\n    - Lead technical discussions\n    - Mentor junior developers\n    - Deploy and maintain production systems|Trump+Obama+Biden|The Baby Gronk"
+}

@@ -74,3 +74,52 @@ services:
             interval: 30s
             timeout: 10s
             retries: 3
+
+    text-to-video:
+        build:
+            context: ./text_to_video
+            dockerfile: Dockerfile
+        ports:
+            - "8003:8000"
+        env_file:
+            - .env
+        environment:
+            - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+            - FISH_AUDIO_API_KEY=${FISH_AUDIO_API_KEY}
+        volumes:
+            - text-to-video-cache:/app/cache
+            - generator-output:/tmp/generator_output
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+            interval: 30s
+            timeout: 10s
+            start_period: 30s
+            retries: 3
+
+    generator:
+        build:
+            context: ./services/generator
+            dockerfile: Dockerfile
+        env_file:
+            - .env
+        environment:
+            - MONGODB_URI=${MONGODB_URI}
+            - MONGODB_DB=${MONGODB_DB}
+            - TEXT_TO_VIDEO_API_URL=http://text-to-video:8000
+            - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT:-https://tor1.digitaloceanspaces.com}
+            - DO_SPACES_ACCESS_KEY=${DO_SPACES_ACCESS_KEY}
+            - DO_SPACES_SECRET_KEY=${DO_SPACES_SECRET_KEY}
+            - DO_SPACES_BUCKET=${DO_SPACES_BUCKET:-deltahacks-videos}
+            - DO_SPACES_REGION=${DO_SPACES_REGION:-tor1}
+            - DO_SPACES_CDN_URL=${DO_SPACES_CDN_URL:-https://deltahacks-videos.tor1.cdn.digitaloceanspaces.com}
+            - WORKER_ID=generator-local
+            - POLL_INTERVAL_S=5
+        volumes:
+            - generator-output:/tmp/generator_output
+        depends_on:
+            text-to-video:
+                condition: service_healthy
+
+volumes:
+    text-to-video-cache:
+    generator-output:

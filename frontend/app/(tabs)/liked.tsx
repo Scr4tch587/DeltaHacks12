@@ -9,6 +9,7 @@ import {
   Modal,
   Platform,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -17,6 +18,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/colors';
 import { videos, videos2, videos3 } from '@/assets/data';
 import { Video, ResizeMode } from 'expo-av';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'expo-router';
 
 const { width, height: screenHeight } = Dimensions.get('window');
 const GRID_SPACING = 2;
@@ -41,10 +44,30 @@ interface LikedVideo {
 export default function LikedScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+  const { user, logout } = useAuth();
+  const router = useRouter();
   
   const [likedVideos, setLikedVideos] = useState<LikedVideo[]>(generateLikedVideos());
   const [viewerVisible, setViewerVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const handleLogout = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/login');
+          },
+        },
+      ]
+    );
+  };
 
   const loadMore = useCallback(() => {
     // Simulate loading more videos
@@ -87,9 +110,11 @@ export default function LikedScreen() {
       
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: isDark ? '#262626' : '#efefef' }]}>
-        <Text style={[styles.username, { color: colors.text }]}>julian</Text>
-        <Pressable style={styles.menuButton}>
-          <Ionicons name="menu" size={24} color={colors.text} />
+        <Text style={[styles.username, { color: colors.text }]}>
+          {user?.email || 'User'}
+        </Text>
+        <Pressable style={styles.menuButton} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={24} color={colors.text} />
         </Pressable>
       </View>
 
@@ -111,12 +136,6 @@ export default function LikedScreen() {
               </Text>
               <Text style={[styles.statLabel, { color: isDark ? '#a0a0a0' : '#737373' }]}>
                 Liked
-              </Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: colors.text }]}>0</Text>
-              <Text style={[styles.statLabel, { color: isDark ? '#a0a0a0' : '#737373' }]}>
-                Applied
               </Text>
             </View>
           </View>
