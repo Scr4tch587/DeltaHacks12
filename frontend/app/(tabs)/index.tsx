@@ -22,6 +22,7 @@ import { ReelOverlay } from "../../components/ReelOverlay";
 import { OTPInputModal } from "../../components/OTPInputModal";
 import { Ionicons } from "@expo/vector-icons";
 import Config from "../../config";
+import { useAuth } from "@/contexts/AuthContext";
 
 const { height, width } = Dimensions.get("window");
 
@@ -68,48 +69,53 @@ console.log(
   process.env.EXPO_PUBLIC_API_BASE_URL || "(not set, using default)"
 );
 
-// Hardcoded sample user ID for testing
-const SAMPLE_USER_ID = "sample-user-123";
-
-// Hardcoded test video IDs for testing (these are actual video IDs in DigitalOcean Spaces)
-const TEST_VIDEO_IDS = [
-  "48561bf3",
-  "48562485",
-  "48562a69",
-  "48562c60",
-  "48563e71",
-  "48563ec4",
-  "48564cb2",
-  "48564d21",
-  "48565024",
-  "48565185",
-  "48565f15",
-  "485664b7",
-  "4856895c",
-  "4856a00d",
-  "4856aa09",
-  "4856bac1",
-  "4856bb17",
-  "4856d458",
-  "4856ef20",
-  "4856f32c",
-];
-
 // Function to fetch videos using semantic search
 async function fetchVideosFromSemanticSearch(
+  user_id: string,
+  text_prompt: string,
   resetIfEmpty: boolean = false
 ): Promise<string[]> {
   // ✅ Hard guard: if feed disabled, return immediately with no network calls
   if (DISABLE_FEED) return [];
 
   try {
-    // For testing: use hardcoded test video IDs
-    console.log("🧪 Using test video IDs for testing");
-    let videoIds: string[] = [...TEST_VIDEO_IDS];
+    // Step 1: Call search jobs endpoint to get greenhouse_ids
+    console.log("🔍 Calling /jobs/search endpoint...");
+    const searchUrl = `${API_BASE_URL}/jobs/search`;
+    console.log(`  URL: ${searchUrl}`);
+    console.log(`  user_id: ${user_id}`);
+    console.log(`  text_prompt: ${text_prompt}`);
 
-    console.log(
-      `Found ${videoIds.length} video IDs (greenhouse_ids), fetching HLS URLs...`
-    );
+    const searchResponse = await fetch(searchUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        user_id,
+        text_prompt,
+      }),
+    });
+
+    if (!searchResponse.ok) {
+      console.error(`❌ Search jobs failed: ${searchResponse.status} ${searchResponse.statusText}`);
+      try {
+        const errorText = await searchResponse.text();
+        console.error(`Error body: ${errorText.substring(0, 200)}`);
+      } catch (e) {
+        console.error("Could not read error response");
+      }
+      return [];
+    }
+
+    const searchData = await searchResponse.json();
+    const videoIds: string[] = searchData.greenhouse_ids || [];
+    console.log(`✅ Found ${videoIds.length} video IDs (greenhouse_ids), fetching HLS URLs...`);
+
+    if (videoIds.length === 0) {
+      console.log("No videos found from search");
+      return [];
+    }
 
     // Step 2: For each video_id (greenhouse_id), call video service to get HLS playback URL
     console.log(`📹 Video Service URL: ${VIDEO_SERVICE_URL}`);
@@ -119,7 +125,6 @@ async function fetchVideosFromSemanticSearch(
       videoIds.map(async (videoId: string) => {
         const videoUrl = `${VIDEO_SERVICE_URL}/video/${videoId}`;
         console.log(`  🔍 Fetching HLS URL for video ${videoId}`);
-        console.log(`     URL: ${videoUrl}`);
 
         const startTime = Date.now();
         try {
@@ -132,30 +137,15 @@ async function fetchVideosFromSemanticSearch(
 
           const elapsed = Date.now() - startTime;
           console.log(`     ✅ Response received in ${elapsed}ms`);
-          console.log(
-            `     Status: ${videoResponse.status} ${videoResponse.statusText}`
-          );
 
           if (!videoResponse.ok) {
             console.error(
               `     ❌ HTTP error ${videoResponse.status} for video ${videoId}`
             );
-            // Try to get error details
-            try {
-              const errorText = await videoResponse.text();
-              console.error(`     Error body: ${errorText.substring(0, 200)}`);
-            } catch (e) {
-              console.error(`     Could not read error response`);
-            }
             return null;
           }
 
           const videoData = await videoResponse.json();
-          console.log(
-            `     Response data:`,
-            JSON.stringify(videoData).substring(0, 150)
-          );
-
           // Extract playback.url from response
           const playbackUrl = videoData.playback?.url || videoData.url;
 
@@ -163,31 +153,15 @@ async function fetchVideosFromSemanticSearch(
             console.warn(
               `     ⚠️  No playback URL found for video ${videoId}`
             );
-            console.warn(`     Available keys:`, Object.keys(videoData));
             return null;
           }
 
-          console.log(`     ✅ Got playback URL: ${playbackUrl}`);
+          console.log(`     ✅ Got playback URL for ${videoId}`);
           return playbackUrl;
         } catch (error: any) {
           const elapsed = Date.now() - startTime;
           console.error(
-            `     ❌ Error after ${elapsed}ms for video ${videoId}:`
-          );
-          console.error(`     Error type: ${error?.name || "Unknown"}`);
-          console.error(
-            `     Error message: ${error?.message || String(error)}`
-          );
-          console.error(`     URL attempted: ${videoUrl}`);
-          console.error(`     This usually means:`);
-          console.error(
-            `       - Video service is not running on ${VIDEO_SERVICE_URL}`
-          );
-          console.error(
-            `       - Video service endpoint /video/${videoId} doesn't exist`
-          );
-          console.error(
-            `       - Network/firewall blocking access to port 8002`
+            `     ❌ Error after ${elapsed}ms for video ${videoId}: ${error?.message || String(error)}`
           );
           return null;
         }
@@ -197,14 +171,13 @@ async function fetchVideosFromSemanticSearch(
     // Filter out null values (failed fetches)
     const validUrls = videoUrls.filter((url): url is string => url !== null);
 
-    console.log(`Loaded ${validUrls.length} HLS URLs`);
+    console.log(`✅ Loaded ${validUrls.length} HLS URLs`);
     return validUrls;
   } catch (error: any) {
     console.error("❌ Fatal error in fetchVideosFromSemanticSearch:");
     console.error("  Error type:", error?.name || "Unknown");
     console.error("  Error message:", error?.message || String(error));
     console.error("  Stack:", error?.stack || "No stack trace");
-    console.error("  This suggests a network/connectivity issue with the backend");
     return [];
   }
 }
@@ -348,12 +321,14 @@ const VideoWrapper = ({
 
 export default function HomeScreen() {
   const bottomHeight = useBottomTabBarHeight();
+  const { user, token } = useAuth();
 
   const [allVideos, setAllVideos] = useState<string[]>([]);
   const [visibleIndex, setVisibleIndex] = useState(0);
   const [pauseOverride, setPauseOverride] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userPrompt, setUserPrompt] = useState<string>("software engineering jobs");
 
   // State for email verification OTP modal
   const [showOTPModal, setShowOTPModal] = useState(false);
@@ -439,6 +414,34 @@ export default function HomeScreen() {
     configureAudio();
   }, []);
 
+  // Fetch user's prompt from backend
+  useEffect(() => {
+    async function fetchUserPrompt() {
+      if (!token || !user) return;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          if (userData.prompt) {
+            setUserPrompt(userData.prompt);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching user prompt:", err);
+      }
+    }
+
+    fetchUserPrompt();
+  }, [token, user]);
+
   // ✅ Load initial videos from backend (GATED)
   useEffect(() => {
     if (DISABLE_FEED) {
@@ -449,10 +452,21 @@ export default function HomeScreen() {
       return;
     }
 
+    if (!user?.user_id) {
+      console.log("⏳ Waiting for user authentication...");
+      return;
+    }
+
     async function loadInitialVideos() {
+      if (!user?.user_id) return;
+      
       try {
         setLoading(true);
-        const videos = await fetchVideosFromSemanticSearch(false);
+        const videos = await fetchVideosFromSemanticSearch(
+          user.user_id,
+          userPrompt,
+          false
+        );
 
         if (videos.length === 0) {
           setError("No videos found");
@@ -468,23 +482,63 @@ export default function HomeScreen() {
     }
 
     loadInitialVideos();
-  }, []);
+  }, [user?.user_id, userPrompt]);
+
+  // Check if queue has 3 or fewer videos and fetch more
+  useEffect(() => {
+    if (DISABLE_FEED) return;
+    if (!user?.user_id) return;
+    if (loading) return; // Don't fetch while initial load is happening
+
+    async function checkAndFetchMore() {
+      if (allVideos.length <= 3 && user?.user_id) {
+        console.log(`📊 Queue has ${allVideos.length} videos (<= 3), fetching more...`);
+        try {
+          const moreVideos = await fetchVideosFromSemanticSearch(
+            user.user_id,
+            userPrompt,
+            false
+          );
+
+          if (moreVideos.length > 0) {
+            setAllVideos((prevVideos) => [...prevVideos, ...moreVideos]);
+            console.log(
+              `✅ Added ${moreVideos.length} more videos. Total: ${
+                allVideos.length + moreVideos.length
+              }`
+            );
+          } else {
+            console.log("⚠️ No more videos available");
+          }
+        } catch (err) {
+          console.error("Error fetching more videos:", err);
+        }
+      }
+    }
+
+    checkAndFetchMore();
+  }, [allVideos.length, user?.user_id, userPrompt, loading]);
 
   const fetchMoreData = async () => {
     if (DISABLE_FEED) return;
+    if (!user?.user_id) return;
 
     try {
-      const moreVideos = await fetchVideosFromSemanticSearch(true);
+      const moreVideos = await fetchVideosFromSemanticSearch(
+        user.user_id,
+        userPrompt,
+        false
+      );
 
       if (moreVideos.length > 0) {
         setAllVideos((prevVideos) => [...prevVideos, ...moreVideos]);
         console.log(
-          `Added ${moreVideos.length} more videos. Total: ${
+          `✅ Added ${moreVideos.length} more videos. Total: ${
             allVideos.length + moreVideos.length
           }`
         );
       } else {
-        console.log("No more videos available even after reset");
+        console.log("⚠️ No more videos available");
       }
     } catch (err) {
       console.error("Error fetching more videos:", err);
