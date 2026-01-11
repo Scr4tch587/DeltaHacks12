@@ -273,7 +273,7 @@ async def get_video(greenhouse_id: str):
     Returns:
         JSON with video_id, playback URLs (HLS manifest and poster), and metadata
     """
-    if not videos_collection:
+    if videos_collection is None:
         raise HTTPException(status_code=503, detail="Database not available")
     
     # Convert greenhouse_id to int if it looks like a number
