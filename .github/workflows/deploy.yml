@@ -27,10 +27,12 @@ jobs:
           VULTR_HOST: ${{ secrets.VULTR_HOST }}
           VULTR_USER: ${{ secrets.VULTR_USER }}
           PROJECT_DIR: ${{ secrets.VULTR_PROJECT_DIR || 'DeltaHacks12' }}
-        run: |
-          ssh -o StrictHostKeyChecking=no ${VULTR_USER}@${VULTR_HOST} "
-            set -e
-            cd ~/${PROJECT_DIR} 2>/dev/null || cd /root/${PROJECT_DIR} 2>/dev/null || cd /home/${VULTR_USER}/${PROJECT_DIR} 2>/dev/null || { echo 'Project directory not found'; exit 1; }
+          run: |
+            ssh -o StrictHostKeyChecking=no ${VULTR_USER}@${VULTR_HOST} "
+              set -e
+              cd '$PROJECT_DIR' 2>/dev/null || cd /root/'$PROJECT_DIR' 2>/dev/null || cd /home/${VULTR_USER}/'$PROJECT_DIR' 2>/dev/null || { echo 'Project directory not found'; exit 1; }
+              ...
+            "
             echo 'Pulling latest code...'
             git fetch origin
             git reset --hard origin/main 2>/dev/null || git reset --hard origin/master

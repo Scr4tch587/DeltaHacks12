@@ -37,6 +37,34 @@ const normalizeUrl = (url: string): string => {
   return url.replace(/\/+$/, "");
 };
 
+const cleanDescription = (raw?: string): string => {
+  if (!raw) return "";
+  const withoutTags = raw.replace(/<[^>]*>/g, " ");
+  const withoutAbout = withoutTags.replace(/\babout this job\b[:\s-]*/gi, " ");
+  const decoded = withoutAbout.replace(
+    /&nbsp;|&amp;|&quot;|&#39;|&lt;|&gt;/gi,
+    (entity) => {
+      switch (entity.toLowerCase()) {
+        case "&nbsp;":
+          return " ";
+        case "&amp;":
+          return "&";
+        case "&quot;":
+          return "\"";
+        case "&#39;":
+          return "'";
+        case "&lt;":
+          return "<";
+        case "&gt;":
+          return ">";
+        default:
+          return entity;
+      }
+    }
+  );
+  return decoded.replace(/\s+/g, " ").trim();
+};
+
 // Configuration pulled from environment variables
 const API_BASE_URL = normalizeUrl(
   process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000"
@@ -199,7 +227,7 @@ async function fetchVideosFromSemanticSearch(
             greenhouseId: videoId,
             companyName: videoData.company_name,
             title: videoData.title,
-            description: videoData.description,
+            description: cleanDescription(videoData.description),
           };
         } catch (error: any) {
           const elapsed = Date.now() - startTime;
