@@ -326,9 +326,6 @@ async def get_video(video_id: str):
                 title = job.get("title", "Video Title")
                 # Use description_text if available, fallback to description
                 description = job.get("description_text") or job.get("description", "Video description")
-                # Truncate description to reasonable length for display
-                if len(description) > 200:
-                    description = description[:197] + "..."
         except Exception as e:
             print(f"Warning: Failed to fetch job metadata for {video_id}: {e}")
     

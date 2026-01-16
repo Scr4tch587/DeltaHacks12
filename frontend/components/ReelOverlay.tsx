@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   TextStyle,
   Platform,
   Animated,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,6 +56,7 @@ export const ReelOverlay: React.FC<ReelOverlayProps> = ({
   onProfilePress,
 }) => {
   const insets = useSafeAreaInsets();
+  const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
   
   // Animation values
   const likeScale = useRef(new Animated.Value(1)).current;
@@ -153,10 +156,35 @@ export const ReelOverlay: React.FC<ReelOverlayProps> = ({
         <Text style={styles.videoTitle} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={styles.videoDescription} numberOfLines={2}>
-          {description}
-        </Text>
+        <Pressable onPress={() => setIsDescriptionOpen(true)}>
+          <Text style={styles.videoDescription} numberOfLines={2}>
+            {description}
+          </Text>
+        </Pressable>
       </View>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={isDescriptionOpen}
+        onRequestClose={() => setIsDescriptionOpen(false)}
+      >
+        <Pressable
+          style={styles.descriptionBackdrop}
+          onPress={() => setIsDescriptionOpen(false)}
+        />
+        <View style={[styles.descriptionModal, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.descriptionHeader}>
+            <Text style={styles.descriptionTitle}>Description</Text>
+            <Pressable onPress={() => setIsDescriptionOpen(false)}>
+              <Ionicons name="close" size={20} color="#fff" />
+            </Pressable>
+          </View>
+          <ScrollView>
+            <Text style={styles.descriptionFullText}>{description}</Text>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -234,5 +262,42 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     opacity: 0.75,
     lineHeight: 18,
+  } as TextStyle,
+
+  descriptionBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  } as ViewStyle,
+
+  descriptionModal: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 24,
+    maxHeight: '70%',
+    backgroundColor: 'rgba(15, 15, 15, 0.95)',
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  } as ViewStyle,
+
+  descriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  } as ViewStyle,
+
+  descriptionTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  } as TextStyle,
+
+  descriptionFullText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 20,
+    opacity: 0.9,
   } as TextStyle,
 });
