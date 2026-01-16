@@ -18,6 +18,7 @@ async def main():
     parser.add_argument("--submit", action="store_true", help="Actually submit the form (default: dry run)")
     parser.add_argument("--keep-open", action="store_true", help="Keep browser open after completion")
     parser.add_argument("--visible", action="store_true", help="Show browser window (not headless)")
+    parser.add_argument("--local", action="store_true", help="Use local test data (skip MongoDB)")
     args = parser.parse_args()
     
     # 0. Create local test resume structure matching Vultr path
@@ -35,20 +36,37 @@ async def main():
         with open(resume_path, "wb") as f:
             # Create a minimal valid PDF
             f.write(b"%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n2 0 obj\n<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\nendobj\n3 0 obj\n<<\n/Type /Page\n/MediaBox [0 0 595 842]\n>>\nendobj\nxref\n0 4\n0000000000 65535 f\n0000000010 00000 n\n0000000060 00000 n\n0000000111 00000 n\ntrailer\n<<\n/Size 4\n/Root 1 0 R\n>>\nstartxref\n158\n%%EOF")
-        print(f"✓ Created test resume")
+        print(f"[OK] Created test resume")
     
-    # 1. Retrieve test user from MongoDB
-    print(f"Retrieving user: {user_email}...")
-    user_profile = await get_user(user_email)
-    
-    if not user_profile:
-        print(f"Error: User {user_email} not found in database.")
-        print("Please run setup_demo.py first to create the test user.")
-        return
+    # 1. Retrieve test user from MongoDB (or use local test data)
+    if args.local:
+        print(f"Using local test profile (skipping MongoDB)...")
+        user_profile = {
+            "email": user_email,
+            "first_name": "Test",
+            "last_name": "User",
+            "phone": "555-123-4567",
+            "location": "Toronto, ON",
+            "linkedin_url": "https://linkedin.com/in/testuser",
+            "portfolio_url": "https://testuser.dev",
+            "resume_path": str(resume_path.absolute()),
+            "work_authorization": "Authorized to work",
+            "years_experience": "3",
+            "education": "Bachelor's in Computer Science",
+            "skills": ["Python", "JavaScript", "AWS", "Docker"],
+        }
+    else:
+        print(f"Retrieving user: {user_email}...")
+        user_profile = await get_user(user_email)
+
+        if not user_profile:
+            print(f"Error: User {user_email} not found in database.")
+            print("Please run setup_demo.py first to create the test user, or use --local flag.")
+            return
     
     # Update user's resume path to local test path
     user_profile["resume_path"] = str(resume_path.absolute())
-    print(f"✓ Using local resume: {user_profile['resume_path']}")
+    print(f"[OK] Using local resume: {user_profile['resume_path']}")
 
     # 2. Job Description
     job_description = """
@@ -168,9 +186,10 @@ async def main():
     print("\nResult:", result)
     
     if args.submit and result.get("status") == "success":
-        print(f"\n✓ Application submitted! Check {user_email} for confirmation.")
-    
-    await close_database()
+        print(f"\n[OK] Application submitted! Check {user_email} for confirmation.")
+
+    if not args.local:
+        await close_database()
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -874,7 +874,7 @@ class GreenhouseApplier:
             
             if await file_input.count() > 0:
                 await file_input.set_input_files(actual_path)
-                print(f"✓ Resume uploaded successfully: {Path(actual_path).name}")
+                print(f"[OK] Resume uploaded successfully: {Path(actual_path).name}")
                 await page.wait_for_timeout(1000)  # Wait for upload to process
             else:
                 print(f"File input not found with selector: {selector}")
