@@ -60,22 +60,25 @@ async def mark_missing_jobs_as_expired(company_token: str, active_job_ids: list[
     Returns:
         Number of jobs marked as expired.
     """
-    db = await get_database()
-    collection = db.jobs
-
-    try:
-        result = await collection.update_many(
-            {
-                "company_token": company_token,
-                "greenhouse_id": {"$nin": active_job_ids},
-                "active": {"$ne": False}  # Only update if not already marked expired
-            },
-            {"$set": {"active": False, "scraped_at": datetime.utcnow()}}
-        )
-        return result.modified_count
-    except Exception as e:
-        print(f"Error marking expired jobs for {company_token}: {e}")
-        return 0
+    # LOCAL MODE: Skip cloud writes
+    print(f"[LOCAL MODE] Would mark expired jobs for {company_token} (skipped)")
+    return 0
+    # db = await get_database()
+    # collection = db.jobs
+    #
+    # try:
+    #     result = await collection.update_many(
+    #         {
+    #             "company_token": company_token,
+    #             "greenhouse_id": {"$nin": active_job_ids},
+    #             "active": {"$ne": False}  # Only update if not already marked expired
+    #         },
+    #         {"$set": {"active": False, "scraped_at": datetime.utcnow()}}
+    #     )
+    #     return result.modified_count
+    # except Exception as e:
+    #     print(f"Error marking expired jobs for {company_token}: {e}")
+    #     return 0
 
 
 async def upsert_job(job_doc: dict[str, Any]) -> bool:
@@ -90,22 +93,25 @@ async def upsert_job(job_doc: dict[str, Any]) -> bool:
     Returns:
         True if document was inserted/updated, False on error
     """
-    db = await get_database()
-    collection = db.jobs
-
-    # Add scraped_at timestamp
-    job_doc["scraped_at"] = datetime.utcnow()
-
-    try:
-        result = await collection.update_one(
-            {"greenhouse_id": job_doc["greenhouse_id"]},
-            {"$set": job_doc},
-            upsert=True,
-        )
-        return result.acknowledged
-    except Exception as e:
-        print(f"Error upserting job {job_doc.get('greenhouse_id')}: {e}")
-        return False
+    # LOCAL MODE: Skip cloud writes
+    print(f"[LOCAL MODE] Would upsert job {job_doc.get('greenhouse_id')}: {job_doc.get('title', 'Unknown')} (skipped)")
+    return True
+    # db = await get_database()
+    # collection = db.jobs
+    #
+    # # Add scraped_at timestamp
+    # job_doc["scraped_at"] = datetime.utcnow()
+    #
+    # try:
+    #     result = await collection.update_one(
+    #         {"greenhouse_id": job_doc["greenhouse_id"]},
+    #         {"$set": job_doc},
+    #         upsert=True,
+    #     )
+    #     return result.acknowledged
+    # except Exception as e:
+    #     print(f"Error upserting job {job_doc.get('greenhouse_id')}: {e}")
+    #     return False
 
 
 async def get_job_count() -> int:
